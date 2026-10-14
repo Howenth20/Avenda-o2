@@ -9,7 +9,13 @@ export async function GET() {
     requireDatabaseConfig();
     await pool.query("SELECT 1");
     const result = await pool.query<{ version: string }>("SELECT version FROM schema_migrations ORDER BY version");
-    return Response.json({ status: "ok", database: "connected", migrations: result.rows.map((row) => row.version) }, { headers: { "Cache-Control": "no-store" } });
+    const applied = result.rows.map((row) => row.version);
+    const expected = ["20261014_001_initial", "20261014_002_weekly_finance_and_claims", "20261014_003_document_evidence"];
+    const missing = expected.filter((version) => !applied.includes(version));
+    if (missing.length) {
+      return Response.json({ status: "error", database: "connected", error: "La base está conectada, pero faltan migraciones. Ejecuta scripts/migrate.mjs contra esta DATABASE_URL.", missingMigrations: missing }, { status: 503, headers: { "Cache-Control": "no-store" } });
+    }
+    return Response.json({ status: "ok", database: "connected", migrations: applied }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return errorResponse(error);
   }

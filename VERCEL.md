@@ -40,6 +40,10 @@ Antes de ejecutar el último comando, agrega también `ADMIN_NAME`, `ADMIN_EMAIL
 
 En Vercel abre **Deployments** y usa **Redeploy**, o envía un nuevo commit a la rama de producción. Las variables nuevas solo se aplican a despliegues creados después de guardarlas.
 
+## Comprueba el despliegue
+
+Abre `https://TU-DOMINIO-VERCEL/api/health`. Cuando la base y las tres migraciones estén listas, debe responder JSON con `"status":"ok"`. Si devuelve 503, el cuerpo indica si faltan variables, conexión o migraciones. El endpoint no expone credenciales ni datos de usuarios.
+
 ## Diagnóstico
 
 - `DATABASE_URL apunta a localhost`: se copió la URL local; reemplázala por la URL externa.
