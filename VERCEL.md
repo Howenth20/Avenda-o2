@@ -1,54 +1,61 @@
 # Despliegue en Vercel con PostgreSQL
 
-La base Docker de tu computadora (`localhost:5432`) solo sirve en desarrollo. Una función de Vercel se ejecuta en la nube y no puede acceder a ella. Por eso el inicio de sesión devuelve 500 cuando la aplicación se despliega sin una base PostgreSQL externa.
+La base Docker de tu computadora (`localhost:5432`) solo sirve en desarrollo. Vercel se ejecuta en la nube y necesita una base PostgreSQL externa.
 
-## 1. Crea o conecta una base externa
+## 1. Configura Vercel
 
-En Vercel abre el proyecto, entra a **Storage** y agrega una integración PostgreSQL del Marketplace, por ejemplo Neon. Crea la base en la misma región que el proyecto y copia la cadena de conexión de la integración.
-
-## 2. Configura las variables de Production
-
-En **Project → Settings → Environment Variables**, agrega estas variables y marca **Production**. Si también pruebas una URL Preview, marca **Preview** con una base de pruebas separada.
+En el proyecto de Vercel abre **Storage** y conecta una base PostgreSQL externa, por ejemplo una integración de Neon. Después ve a **Settings → Environment Variables** y agrega las variables necesarias para **Production**:
 
 | Variable | Valor |
 | --- | --- |
-| `DATABASE_URL` | La cadena PostgreSQL completa del proveedor. No uses `localhost`, `127.0.0.1` ni la URL de Docker. |
-| `DATABASE_SSL` | `true`, solamente si la cadena no contiene `sslmode`. |
+| `DATABASE_URL` | Cadena PostgreSQL externa entregada por el proveedor. Nunca uses `localhost` ni la URL de Docker. |
+| `DATABASE_SSL` | `true` si la URL no incluye `sslmode=require`. |
 | `DB_POOL_MAX` | `3` |
-| `AUTH_SECRET` | Un secreto aleatorio de 32 bytes o más. |
-| `BUSINESS_TIME_ZONE` | `America/Lima` |
-| `UPLOADS_DIR` | No la configures en Vercel hasta usar almacenamiento persistente. |
+| `ADMIN_NAME` | Nombre del administrador inicial. |
+| `ADMIN_EMAIL` | Correo que usarás para entrar. |
+| `ADMIN_PASSWORD` | Contraseña inicial de al menos 14 caracteres. |
+| `AUTH_SECRET` | Secreto aleatorio de 32 bytes o más. |
 
-No copies `.env.local` al repositorio ni a Vercel: contiene la URL de tu PostgreSQL local.
+Guarda las variables antes de descargarlas. Vercel solo las aplica a los nuevos despliegues. No publiques ni compartas `.env.production.local`.
 
-## 3. Crea tablas y el administrador en la base de producción
+## 2. Enlaza la carpeta con Vercel y descarga las variables
 
-Ejecuta una sola vez desde tu computadora. Este proceso usa las variables que Vercel tiene en Production, aplica las migraciones sin borrar datos y crea el administrador solo si la tabla de usuarios está vacía.
+En Windows PowerShell, `vercel` puede no estar instalado como comando. Usa `npx.cmd`, que descarga la CLI sin instalarla globalmente. En el primer comando inicia sesión en la cuenta de Vercel; después enlaza la carpeta al proyecto correcto:
 
 ```powershell
-npm install -g vercel
-cd C:\ruta\a\rinde-plus-github
-vercel link
-vercel env pull .env.production.local --environment=production
-node --env-file=.env.production.local scripts/migrate.mjs
-node --env-file=.env.production.local scripts/seed-admin.mjs
+Set-Location "C:\Users\Luis\rinde-plus-github-20261014-163657"
+npx.cmd --yes vercel@latest login
+if ($LASTEXITCODE -ne 0) { throw "No se pudo iniciar sesión en Vercel. No continúes." }
+npx.cmd --yes vercel@latest link
+if ($LASTEXITCODE -ne 0) { throw "No se pudo enlazar el proyecto de Vercel. No continúes." }
+npx.cmd --yes vercel@latest env pull .env.production.local --environment=production
+if ($LASTEXITCODE -ne 0) { throw "Vercel no pudo descargar las variables de Production." }
+if (-not (Test-Path -LiteralPath ".env.production.local")) { throw "No se creó .env.production.local. Revisa el inicio de sesión y el enlace al proyecto." }
+node --env-file=.env.production.local -e "for (const k of ['DATABASE_URL','ADMIN_NAME','ADMIN_EMAIL','ADMIN_PASSWORD']) { if (!process.env[k]) { console.error(k + ': FALTA'); process.exitCode=1 } else { console.log(k + ': OK') } }"
+if ($LASTEXITCODE -ne 0) { throw "Faltan variables. Agrégalas en Vercel Production y repite env pull." }
 ```
 
-Antes de ejecutar el último comando, agrega también `ADMIN_NAME`, `ADMIN_EMAIL` y `ADMIN_PASSWORD` en Vercel Production. Luego elimina `.env.production.local` de tu equipo o guárdalo fuera del proyecto.
+El comando no imprime contraseñas ni la URL de la base. Si vuelve a salir `vercel no se reconoce`, asegúrate de copiar los comandos `npx.cmd` de arriba tal como aparecen.
 
-## 4. Vuelve a desplegar
+## 3. Migra la base y crea el administrador inicial
 
-En Vercel abre **Deployments** y usa **Redeploy**, o envía un nuevo commit a la rama de producción. Las variables nuevas solo se aplican a despliegues creados después de guardarlas.
+Ejecuta la migración contra la misma `DATABASE_URL` que Vercel descargó. La migración conserva los datos existentes. Ejecuta `seed-admin.mjs` solo si la tabla `users` está vacía; el sembrado no se puede repetir sobre una base con cuentas.
 
-## Comprueba el despliegue
+```powershell
+node --env-file=.env.production.local scripts/migrate.mjs
+if ($LASTEXITCODE -ne 0) { throw "Falló la migración. Lee el error antes de continuar." }
+node --env-file=.env.production.local scripts/seed-admin.mjs
+if ($LASTEXITCODE -ne 0) { throw "No se creó el administrador. Si ya hay cuentas en esa base, inicia con la cuenta existente." }
+```
 
-Abre `https://TU-DOMINIO-VERCEL/api/health`. Cuando la base y las tres migraciones estén listas, debe responder JSON con `"status":"ok"`. Si devuelve 503, el cuerpo indica si faltan variables, conexión o migraciones. El endpoint no expone credenciales ni datos de usuarios.
+## 4. Despliega y verifica
 
-## Diagnóstico
+En Vercel confirma que el proyecto use el repositorio `Howenth20/Avenda-o2` y la rama `main`; luego espera el nuevo deployment o ejecuta **Redeploy** desde **Deployments**. Abre `https://TU-DOMINIO-VERCEL/api/health`. Cuando la base y las tres migraciones estén listas, debe devolver JSON con `"status":"ok"`. Si devuelve 503, el mensaje indica qué falta.
 
-- `DATABASE_URL apunta a localhost`: se copió la URL local; reemplázala por la URL externa.
-- `No se pudo conectar a PostgreSQL`: verifica URL, SSL, región y permisos del proveedor.
-- `La base de datos no tiene las tablas requeridas`: ejecuta el paso 3.
-- `Correo o contraseña incorrectos`: usa el correo y la clave definidos al ejecutar el sembrado de producción; no son necesariamente los de tu `.env.local`.
+- `DATABASE_URL apunta a localhost`: reemplázala en Vercel por la cadena PostgreSQL externa.
+- `No se pudo conectar`: revisa URL, credenciales, SSL y disponibilidad del proveedor.
+- `Faltan migraciones`: repite el paso 3.
+- `Correo o contraseña incorrectos`: usa `ADMIN_EMAIL` y `ADMIN_PASSWORD` del sembrado de producción; no tienen por qué coincidir con el administrador local.
+- `DEPLOYMENT_NOT_FOUND`: abre **Settings → Domains** en Vercel y usa el dominio que aparece en el proyecto desplegado.
 
-Los PDFs requieren almacenamiento persistente en producción. El sistema seguirá funcionando con su control de datos; para conservar comprobantes entre despliegues se debe conectar almacenamiento de objetos compatible con S3 antes de usar esa función en Vercel.
+Los comprobantes PDF necesitan almacenamiento de objetos persistente para conservarse entre despliegues en Vercel; el disco local de una función no es almacenamiento permanente.
