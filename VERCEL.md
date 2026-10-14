@@ -50,7 +50,7 @@ if ($LASTEXITCODE -ne 0) { throw "No se creó el administrador. Si ya hay cuenta
 
 ## 4. Despliega y verifica
 
-En Vercel confirma que el proyecto use el repositorio `Howenth20/Avenda-o2` y la rama `main`; luego espera el nuevo deployment o ejecuta **Redeploy** desde **Deployments**. Abre `https://TU-DOMINIO-VERCEL/api/health`. Cuando la base y las tres migraciones estén listas, debe devolver JSON con `"status":"ok"`. Si devuelve 503, el mensaje indica qué falta.
+En Vercel confirma que el proyecto use el repositorio `Howenth20/Avenda-o2` y la rama `main`; luego espera el nuevo deployment o ejecuta **Redeploy** desde **Deployments**. Abre `https://TU-DOMINIO-VERCEL/api/health`. Cuando la base y las cuatro migraciones estén listas, debe devolver JSON con `"status":"ok"`. Si devuelve 503, el mensaje indica qué falta.
 
 - `DATABASE_URL apunta a localhost`: reemplázala en Vercel por la cadena PostgreSQL externa.
 - `No se pudo conectar`: revisa URL, credenciales, SSL y disponibilidad del proveedor.
@@ -58,4 +58,4 @@ En Vercel confirma que el proyecto use el repositorio `Howenth20/Avenda-o2` y la
 - `Correo o contraseña incorrectos`: usa `ADMIN_EMAIL` y `ADMIN_PASSWORD` del sembrado de producción; no tienen por qué coincidir con el administrador local.
 - `DEPLOYMENT_NOT_FOUND`: abre **Settings → Domains** en Vercel y usa el dominio que aparece en el proyecto desplegado.
 
-Los comprobantes PDF necesitan almacenamiento de objetos persistente para conservarse entre despliegues en Vercel; el disco local de una función no es almacenamiento permanente.
+Los comprobantes nuevos (PDF e imágenes JPG, PNG, WEBP, GIF o BMP) se guardan en PostgreSQL y permanecen disponibles entre despliegues. El tamaño máximo es 4 MB por archivo para mantenerse bajo el límite de 4.5 MB del cuerpo de petición de Vercel. Considera el espacio de base de datos disponible al almacenar muchos archivos; los comprobantes antiguos que solo estén en el disco temporal de una función no se pueden recuperar desde nuevos despliegues.

@@ -16,6 +16,7 @@ try {
     { version: "20261014_001_initial", file: new URL("../db/schema.sql", import.meta.url) },
     { version: "20261014_002_weekly_finance_and_claims", file: new URL("../db/migrations/20261014_002_weekly_finance_and_claims.sql", import.meta.url) },
     { version: "20261014_003_document_evidence", file: new URL("../db/migrations/20261014_003_document_evidence.sql", import.meta.url) },
+    { version: "20261014_004_image_and_database_evidence", file: new URL("../db/migrations/20261014_004_image_and_database_evidence.sql", import.meta.url) },
   ];
   const client = await pool.connect();
   try {

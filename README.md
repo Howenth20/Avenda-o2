@@ -10,7 +10,7 @@ Aplicación nueva para gestionar gastos, asistencia y viáticos por obra. Está 
 - Asistencia diaria para asistió, faltó o justificado. Impide duplicados y fechas futuras; permite baja lógica con motivo y restauración administrativa.
 - Viático calculado en el servidor con tarifa histórica: días asistidos × tarifa diaria. La pantalla muestra el cálculo y cada cambio de tarifa o asistencia recalcula los importes pendientes con auditoría.
 - Operación semanal: cada gasto, viático y movimiento de caja chica queda vinculado al lunes de su semana. El registro general cruza las tres fuentes para todas las obras que la cuenta puede consultar.
-- Tres etapas de pago: pendiente, aprobado y pagado. Un gasto queda como “Factura hecha” solamente al adjuntar su PDF, con proveedor, número de comprobante e importe idéntico al registro.
+- Tres etapas de pago: pendiente, aprobado y pagado. Cada gasto, movimiento de caja chica y viático puede tener un comprobante PDF o una imagen JPG, PNG, WEBP, GIF o BMP. El archivo se valida por su contenido y se vincula al importe del registro; los datos del documento son opcionales y, si se indica un importe, debe coincidir. “Factura hecha” se marca cuando el gasto tiene un comprobante adjunto y datos de proveedor o número de documento.
 - Caja chica con fondo, reposición, devolución y descuentos automáticos por gastos registrados desde caja chica. El saldo acumulado se calcula en el backend.
 - Bajas lógicas con motivo, botones de eliminación donde el registro puede eliminarse y restauración administrativa.
 - Gastos, tablero general, desglose por obra, reporte semanal PDF con fechas normalizadas, tickets de soporte y auditoría con valores antes/después, usuario, fecha e IP.
@@ -37,7 +37,7 @@ npm run dev
 
 Abre `http://localhost:3000`. La dirección y contraseña del administrador son las que definiste en `.env.local`. El sembrado inicial solo funciona con la tabla de usuarios vacía; no crea una cuenta demo ni agrega datos empresariales ficticios.
 
-`npm run db:migrate` aplica todas las migraciones pendientes sin borrar los registros existentes. Si ya tenías una instalación anterior, ejecútalo una vez después de reemplazar el proyecto para crear las tablas de caja chica y reclamaciones, y añadir los campos semanales, de factura y de autorización. También crea la tabla de comprobantes PDF. Los archivos se guardan fuera de `public` en `private-uploads`; `UPLOADS_DIR` permite cambiar esa ubicación y `UPLOAD_MAX_BYTES` define el límite, que por defecto es 5 MB.
+`npm run db:migrate` aplica todas las migraciones pendientes sin borrar los registros existentes. Si ya tenías una instalación anterior, ejecútalo una vez después de reemplazar el proyecto para crear las tablas de caja chica y reclamaciones, y añadir los campos semanales, de factura y de autorización. Los nuevos comprobantes se guardan como datos binarios en PostgreSQL para que sigan disponibles entre despliegues; se acepta un archivo de hasta 4 MB por registro. `UPLOADS_DIR` solo se usa para intentar leer comprobantes PDF antiguos que aún estén guardados en disco.
 
 ## Correo de soporte
 
