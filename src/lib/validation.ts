@@ -26,6 +26,12 @@ export function mondayOfWeek(value: string | Date): string {
   return day.toISOString().slice(0, 10);
 }
 
+export function addDays(value: string, count: number): string {
+  const date = new Date(`${value.slice(0, 10)}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + count);
+  return date.toISOString().slice(0, 10);
+}
+
 export function getClientProjectId(projectId: string, userProjectId: string | null, isAdmin: boolean): string {
   return isAdmin ? projectId : (userProjectId ?? "");
 }

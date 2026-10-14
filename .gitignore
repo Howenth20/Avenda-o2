@@ -1,9 +1,9 @@
-﻿node_modules/
-dist/
-build/
+private-uploads/
+node_modules/
 .next/
-.vercel/
+out/
 .env
-.env.local
-.env.production
+.env.*
+!.env.example
+coverage/
 *.log

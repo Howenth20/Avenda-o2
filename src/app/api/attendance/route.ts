@@ -5,7 +5,7 @@ import { inTransaction, pool } from "@/lib/db";
 import { recalculatePerDiem } from "@/lib/finance";
 import { assertSameOrigin, errorResponse, isUniqueViolation, parseJson, requestIp } from "@/lib/http";
 import { ApiError } from "@/lib/types";
-import { businessToday, isoDateSchema, uuidSchema } from "@/lib/validation";
+import { businessToday, isoDateSchema, mondayOfWeek, uuidSchema } from "@/lib/validation";
 
 const attendanceSchema = z.object({
   workerId: uuidSchema,
@@ -18,21 +18,25 @@ export async function GET(request: Request) {
   try {
     const user = await requireUser();
     const params = new URL(request.url).searchParams;
+    const weekStart = params.get("weekStart");
     const month = params.get("month") ?? businessToday().slice(0, 7);
-    if (!/^\d{4}-\d{2}$/.test(month)) throw new ApiError(422, "El mes debe tener el formato AAAA-MM.");
-    const values: unknown[] = [`${month}-01`, `${month}-01`];
+    const includeDeleted = params.get("includeDeleted") === "true" && user.role === "ADMIN";
+    if (weekStart && mondayOfWeek(weekStart) !== weekStart) throw new ApiError(422, "Selecciona el lunes de la semana.");
+    if (!weekStart && !/^\d{4}-\d{2}$/.test(month)) throw new ApiError(422, "El mes debe tener el formato AAAA-MM.");
+    const values: unknown[] = [weekStart ?? `${month}-01`];
     let scope = "";
     if (user.role === "PROJECT_USER") {
       values.push(user.projectId);
       scope = ` AND w.project_id = $${values.length}`;
     }
     const result = await pool.query(
-      `SELECT a.id, a.worker_id, a.work_date, a.status, a.note, a.recorded_at, a.updated_at,
+      `SELECT a.id, a.worker_id, a.work_date, a.status, a.note, a.recorded_at, a.updated_at,a.deleted_at,a.delete_reason,
               w.first_name, w.last_name, w.dni, w.project_id, p.code AS project_code, u.name AS recorded_by
        FROM attendances a JOIN workers w ON w.id=a.worker_id JOIN projects p ON p.id=w.project_id
        JOIN users u ON u.id=a.recorded_by
-       WHERE a.work_date >= $1::date AND a.work_date < ($2::date + INTERVAL '1 month')
-         AND a.deleted_at IS NULL ${scope}
+       WHERE ${includeDeleted ? "TRUE" : "a.deleted_at IS NULL"}
+         AND ${weekStart ? "a.work_date BETWEEN $1::date AND ($1::date + INTERVAL '6 days')" : "a.work_date >= $1::date AND a.work_date < ($1::date + INTERVAL '1 month')"}
+         ${scope}
        ORDER BY a.work_date DESC, w.last_name, w.first_name LIMIT 1000`, values,
     );
     return Response.json({ attendance: result.rows });

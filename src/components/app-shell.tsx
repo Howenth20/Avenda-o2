@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   BadgeCheck,
   BarChart3,
+  BookOpenCheck,
   Building2,
   CalendarCheck2,
   Check,
@@ -12,13 +13,17 @@ import {
   CircleAlert,
   Clock3,
   FileBarChart,
+  FileUp,
   LayoutDashboard,
+  Landmark,
   LifeBuoy,
   LogOut,
   Plus,
   ReceiptText,
   Search,
   ShieldCheck,
+  Trash2,
+  Undo2,
   UsersRound,
   Wallet,
   X,
@@ -26,18 +31,22 @@ import {
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 type Role = "ADMIN" | "PROJECT_USER";
-type Section = "dashboard" | "projects" | "workers" | "attendance" | "per-diems" | "expenses" | "users" | "reports" | "audit" | "support";
+type Section = "dashboard" | "projects" | "workers" | "attendance" | "per-diems" | "expenses" | "petty-cash" | "users" | "reports" | "audit" | "claims" | "support";
 interface User { id: string; name: string; email: string; role: Role; projectId: string | null }
 interface Project { id: string; code: string; name: string; responsible: string; location: string; status: string; daily_rate_cents: number; deleted_at?: string | null }
 interface Worker { id: string; project_id: string; dni: string; first_name: string; last_name: string; job_title: string; phone: string; email: string; address: string; hired_on: string; status: string; deleted_at: string | null }
-interface Attendance { id: string; worker_id: string; work_date: string; status: string; note: string | null; first_name: string; last_name: string; dni: string; project_id: string; project_code: string; recorded_by?: string }
-interface PerDiem { id: string; worker_id: string; project_id: string; week_start: string; days_attended: number; daily_rate_cents: number; total_cents: number; stage: string; first_name: string; last_name: string; dni: string; project_code: string; project_name: string }
-interface Expense { id: string; project_id: string; expense_date: string; category: string; description: string; supplier: string | null; receipt_number: string | null; amount_cents: number; stage: string; project_code: string; project_name: string; registered_by?: string }
-interface ManagedUser { id: string; name: string; email: string; role: Role; project_id: string | null; active: boolean; project_code: string | null; project_name: string | null }
+interface Attendance { id: string; worker_id: string; work_date: string; status: string; note: string | null; first_name: string; last_name: string; dni: string; project_id: string; project_code: string; recorded_by?: string; deleted_at?: string | null; delete_reason?: string | null }
+interface PerDiem { id: string; worker_id: string; project_id: string; week_start: string; days_attended: number; daily_rate_cents: number; total_cents: number; stage: string; first_name: string; last_name: string; dni: string; project_code: string; project_name: string; evidence_id?: string | null; evidence_name?: string | null; evidence_document_number?: string | null; evidence_document_date?: string | null }
+interface Expense { id: string; project_id: string; expense_date: string; week_start?: string; category: string; description: string; supplier: string | null; receipt_number: string | null; amount_cents: number; stage: string; invoice_status?: string; payment_source?: string; project_code: string; project_name: string; registered_by?: string; deleted_at?: string | null; delete_reason?: string | null; evidence_id?: string | null; evidence_name?: string | null; evidence_document_number?: string | null; evidence_document_date?: string | null }
+interface ManagedUser { id: string; name: string; email: string; role: Role; project_id: string | null; active: boolean; project_code: string | null; project_name: string | null; authorized_at?: string | null; authorized_by_name?: string | null }
+interface PettyCash { id: string; project_id: string; week_start: string; movement_date: string; movement_type: string; description: string; receipt_number: string | null; amount_cents: number; project_code: string; project_name: string; recorded_by?: string; deleted_at?: string | null; delete_reason?: string | null; evidence_id?: string | null; evidence_name?: string | null; evidence_document_number?: string | null; evidence_document_date?: string | null }
+interface WeeklyMovement { id: string; projectId: string; projectCode: string; projectName: string; kind: "GASTO" | "VIATICO" | "CAJA_CHICA"; movementDate: string; category: string; description: string; amountCents: number; stage: string; invoiceStatus: string | null; paymentSource: string | null; receiptNumber: string | null; daysAttended: number | null; cashDirection: "IN" | "OUT" | null }
+interface WeeklyReport { weekStart: string; weekEnd: string; movements: WeeklyMovement[]; totals: { expenseCents: number; perDiemCents: number; operationalCents: number; pendingCents: number; paidCents: number; invoiceDoneCents: number; pettyCashInCents: number; pettyCashReturnCents: number; pettyCashExpenseCents: number; pettyCashBalanceCents: number } }
+interface Claim { id: string; claim_code: string; full_name: string; email: string; project_code: string | null; claim_type: string; detail: string; request_text: string; status: string; response: string | null; created_at: string }
 interface Ticket { id: string; ticket_code: string; name: string; email: string; subject: string; message: string; status: string; mail_status: string; created_at: string }
 interface Audit { id: number; action: string; entity_type: string; actor_name: string; project_code: string | null; before_data: unknown; after_data: unknown; reason: string | null; created_at: string }
-interface DashboardData { summary: { projectCount: number; workerCount: number; expenseTotalCents: number; perDiemTotalCents: number; pendingCents: number; paidCents: number; pendingCount: number; attendanceThisWeek: { present: number; absent: number; excused: number } }; projects: { id: string; code: string; name: string; responsible?: string; location?: string; status?: string; projectTotalCents: number; daily_rate_cents: number; workers: number }[]; recent: Expense[] }
-interface ApiResult { error?: string; [key: string]: unknown }
+interface DashboardData { weekStart?: string; weekEnd?: string; summary: { projectCount: number; workerCount: number; expenseTotalCents: number; perDiemTotalCents: number; pendingCents: number; paidCents: number; pendingCount: number; invoiceDoneCents?: number; pettyCashBalanceCents?: number; attendanceThisWeek: { present: number; absent: number; excused: number } }; projects: { id: string; code: string; name: string; responsible?: string; location?: string; status?: string; projectTotalCents: number; daily_rate_cents: number; workers: number }[]; recent: Expense[] }
+interface ApiResult { error?: string }
 
 const navigation: { key: Section; label: string; icon: typeof LayoutDashboard; adminOnly?: boolean }[] = [
   { key: "dashboard", label: "Panel principal", icon: LayoutDashboard },
@@ -46,23 +55,31 @@ const navigation: { key: Section; label: string; icon: typeof LayoutDashboard; a
   { key: "attendance", label: "Asistencia", icon: CalendarCheck2 },
   { key: "per-diems", label: "Viáticos", icon: Wallet },
   { key: "expenses", label: "Gastos", icon: ReceiptText },
+  { key: "petty-cash", label: "Caja chica", icon: Landmark },
   { key: "users", label: "Cuentas", icon: ShieldCheck, adminOnly: true },
   { key: "reports", label: "Reportes", icon: FileBarChart },
+  { key: "claims", label: "Reclamaciones", icon: BookOpenCheck },
   { key: "audit", label: "Auditoría", icon: BarChart3 },
   { key: "support", label: "Soporte", icon: LifeBuoy },
 ];
 
-async function api<T extends ApiResult = ApiResult>(path: string, init: RequestInit = {}): Promise<T> {
+async function api<T = ApiResult>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
     ...init,
     credentials: "same-origin",
     headers: { ...(init.body ? { "Content-Type": "application/json" } : {}), ...init.headers },
   });
   const data = (await response.json().catch(() => ({}))) as T;
-  if (!response.ok) throw new Error(data.error ?? "No se pudo completar la solicitud.");
+  if (!response.ok) throw new Error((data as ApiResult).error ?? "No se pudo completar la solicitud.");
   return data;
 }
 
+async function apiForm<T = ApiResult>(path: string, body: FormData): Promise<T> {
+  const response = await fetch(path, { method: "POST", credentials: "same-origin", body });
+  const data = (await response.json().catch(() => ({}))) as T;
+  if (!response.ok) throw new Error((data as ApiResult).error ?? "No se pudo subir el comprobante.");
+  return data;
+}
 function amount(cents: number | string | null | undefined): string {
   return `S/ ${((Number(cents) || 0) / 100).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -73,6 +90,7 @@ function dateLabel(value: string | null | undefined): string {
   return Number.isNaN(parsed.valueOf()) ? value : parsed.toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function monthNow(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Lima", year: "numeric", month: "2-digit" }).format(new Date());
 }
@@ -102,13 +120,27 @@ function filteredRowsForWeek(rows: Attendance[], projectId: string, monday: stri
 }
 
 function stageLabel(stage: string): string {
-  return ({ PENDING: "Pendiente", APPROVED: "Aprobado", PAID: "Pagado", ACTIVE: "Activa", PAUSED: "Pausada", CLOSED: "Cerrada", PRESENT: "Asistió", ABSENT: "Faltó", EXCUSED: "Justificado", REVIEW: "En revisión", RESOLVED: "Resuelto" } as Record<string, string>)[stage] ?? stage;
+  return ({ PENDING: "Pendiente", APPROVED: "Aprobado", PAID: "Pagado", HECHO: "Factura hecha", DIRECT: "Pago directo", PETTY_CASH: "Caja chica", REGISTERED: "Registrado", FUND: "Fondo asignado", REPLENISHMENT: "Reposición", RETURN: "Devolución", ACTIVE: "Activa", PAUSED: "Pausada", CLOSED: "Cerrada", PRESENT: "Asistió", ABSENT: "Faltó", EXCUSED: "Justificado", REVIEW: "En revisión", RESOLVED: "Resuelto", RECEIVED: "Recibido", RESPONDED: "Respondido", COMPLAINT: "Queja", CLAIM: "Reclamo" } as Record<string, string>)[stage] ?? stage;
 }
 
 function StagePill({ value }: { value: string }) {
   return <span className={`stage-pill stage-${value.toLowerCase()}`}>{stageLabel(value)}</span>;
 }
 
+type EvidenceEntityType = "EXPENSE" | "PETTY_CASH" | "PER_DIEM";
+interface EvidenceTarget { entityType: EvidenceEntityType; entityId: string; projectCode: string; description: string; amountCents: number; date: string; supplier?: string | null }
+
+function EvidenceDialog({ target, busy, perform, onClose }: { target: EvidenceTarget; busy: boolean; perform: PerformHandler; onClose: () => void }) {
+  const [fileMessage, setFileMessage] = useState("Selecciona el comprobante original en PDF. Máximo 5 MB.");
+  const isExpense = target.entityType === "EXPENSE";
+  const onFileChange = (file: File | undefined) => {
+    if (!file) return setFileMessage("Selecciona el comprobante original en PDF. Máximo 5 MB.");
+    if (file.size > 5 * 1024 * 1024) return setFileMessage("El archivo supera 5 MB. Selecciona un PDF más pequeño.");
+    if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") return setFileMessage("Solo se admiten documentos PDF.");
+    setFileMessage("Archivo listo: " + file.name + " (" + Math.ceil(file.size / 1024) + " KB). El servidor verificará su estructura y el importe.");
+  };
+  return <div className="modal-overlay" role="presentation"><form className="modal-card evidence-modal" onSubmit={(event) => { event.preventDefault(); void perform(async () => { const form = new FormData(event.currentTarget); const file = form.get("file"); if (!(file instanceof File) || !file.size) throw new Error("Selecciona el PDF original antes de guardarlo."); await apiForm("/api/evidences", form); onClose(); return "Comprobante PDF guardado y validado contra el importe registrado."; }); }}><div className="modal-heading"><div><span className="eyebrow">COMPROBANTE VERIFICABLE</span><h2>{target.projectCode} · {amount(target.amountCents)}</h2><p>{target.description}</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar"><X size={15} /></button></div><input type="hidden" name="entityType" value={target.entityType} /><input type="hidden" name="entityId" value={target.entityId} /><input type="hidden" name="documentAmount" value={(target.amountCents / 100).toFixed(2)} /><div className="evidence-note"><FileUp size={18} /><span>Se aceptan PDFs reales, se controla tamaño y estructura del archivo, y el importe debe coincidir exactamente con el registro de dinero.</span></div><div className="form-grid"><label className="span-two evidence-file-field">Archivo PDF<input name="file" type="file" accept="application/pdf,.pdf" required onChange={(event) => onFileChange(event.currentTarget.files?.[0])} /><small>{fileMessage}</small></label><label>Número del comprobante<input name="documentNumber" required minLength={2} maxLength={100} placeholder="Ej. F001-000123" /></label><label>Fecha del comprobante<input name="documentDate" type="date" defaultValue={target.date.slice(0, 10)} required /></label>{isExpense && <label className="span-two">Proveedor de la factura<input name="supplier" defaultValue={target.supplier ?? ""} required maxLength={160} /></label>}</div><div className="modal-actions"><button type="button" className="button button-quiet" onClick={onClose}>Cancelar</button><button className="button button-primary" disabled={busy}>Validar y guardar PDF</button></div></form></div>;
+}
 function EmptyState({ children }: { children: React.ReactNode }) {
   return <div className="empty-state"><span className="empty-mark"><Search size={18} /></span><p>{children}</p></div>;
 }
@@ -126,27 +158,32 @@ export function AppShell() {
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [perDiems, setPerDiems] = useState<PerDiem[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [pettyCash, setPettyCash] = useState<PettyCash[]>([]);
+  const [weeklyReport, setWeeklyReport] = useState<WeeklyReport | null>(null);
   const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [claims, setClaims] = useState<Claim[]>([]);
   const [audit, setAudit] = useState<Audit[]>([]);
-  const [month, setMonth] = useState(monthNow());
   const [weekStart, setWeekStart] = useState(mondayNow());
   const [ticketResult, setTicketResult] = useState("");
 
   const refresh = useCallback(async (activeUser: User) => {
     const requests: Promise<unknown>[] = [
-      api<{ summary: DashboardData["summary"]; projects: DashboardData["projects"]; recent: DashboardData["recent"] }>("/api/dashboard").then((r) => setDashboard(r)),
+      api<DashboardData>(`/api/dashboard?weekStart=${weekStart}`).then((r) => setDashboard(r)),
       api<{ projects: Project[] }>(activeUser.role === "ADMIN" ? "/api/projects?includeDeleted=true" : "/api/projects").then((r) => setProjects(r.projects)),
       api<{ workers: Worker[] }>("/api/workers?includeDeleted=true").then((r) => setWorkers(r.workers)),
-      api<{ attendance: Attendance[] }>(`/api/attendance?month=${month}`).then((r) => setAttendance(r.attendance)),
-      api<{ perDiems: PerDiem[] }>(`/api/per-diems?month=${month}`).then((r) => setPerDiems(r.perDiems)),
-      api<{ expenses: Expense[] }>(`/api/expenses?month=${month}`).then((r) => setExpenses(r.expenses)),
+      api<{ attendance: Attendance[] }>(`/api/attendance?weekStart=${weekStart}${activeUser.role === "ADMIN" ? "&includeDeleted=true" : ""}`).then((r) => setAttendance(r.attendance)),
+      api<{ perDiems: PerDiem[] }>(`/api/per-diems?weekStart=${weekStart}`).then((r) => setPerDiems(r.perDiems)),
+      api<{ expenses: Expense[] }>(`/api/expenses?weekStart=${weekStart}${activeUser.role === "ADMIN" ? "&includeDeleted=true" : ""}`).then((r) => setExpenses(r.expenses)),
+      api<{ movements: PettyCash[] }>(`/api/petty-cash?weekStart=${weekStart}${activeUser.role === "ADMIN" ? "&includeDeleted=true" : ""}`).then((r) => setPettyCash(r.movements)),
+      api<WeeklyReport>(`/api/reports/weekly?weekStart=${weekStart}`).then((r) => setWeeklyReport(r)),
       api<{ tickets: Ticket[] }>("/api/support").then((r) => setTickets(r.tickets)),
+      api<{ claims: Claim[] }>("/api/claims").then((r) => setClaims(r.claims)),
       api<{ audit: Audit[] }>("/api/audit").then((r) => setAudit(r.audit)),
     ];
     if (activeUser.role === "ADMIN") requests.push(api<{ users: ManagedUser[] }>("/api/users").then((r) => setManagedUsers(r.users)));
     await Promise.allSettled(requests);
-  }, [month]);
+  }, [weekStart]);
 
   useEffect(() => {
     api<{ user: User | null }>("/api/auth/session")
@@ -219,13 +256,15 @@ export function AppShell() {
           {(message || error) && <div className={`toast ${error ? "toast-error" : "toast-success"}`} role="status">{error ? <CircleAlert size={17} /> : <Check size={17} />}{error || message}<button aria-label="Cerrar" onClick={() => { setError(""); setMessage(""); }}><X size={15} /></button></div>}
           {section === "dashboard" && (user.role === "ADMIN" ? <DashboardPage user={user} dashboard={dashboard} onSelect={setSection} /> : <ProjectDashboardPage dashboard={dashboard} onSelect={setSection} />)}
           {section === "projects" && <ProjectsPage admin={user.role === "ADMIN"} projects={projects} busy={busy} submit={submit} perform={perform} />}
-          {section === "workers" && <WorkersPage admin={user.role === "ADMIN"} projects={projects} workers={workers} busy={busy} submit={submit} perform={perform} />}
-          {section === "attendance" && <AttendancePage projects={projects} workers={workers.filter((worker) => !worker.deleted_at && worker.status === "ACTIVE")} rows={attendance} admin={user.role === "ADMIN"} month={month} setMonth={setMonth} busy={busy} submit={submit} perform={perform} />}
-          {section === "per-diems" && <PerDiemPage projects={projects} rows={perDiems} admin={user.role === "ADMIN"} weekStart={weekStart} setWeekStart={setWeekStart} busy={busy} perform={perform} />}
-          {section === "expenses" && <ExpensesPage projects={projects} rows={expenses} admin={user.role === "ADMIN"} busy={busy} submit={submit} perform={perform} />}
-          {section === "users" && user.role === "ADMIN" && <UsersPage projects={projects} rows={managedUsers} busy={busy} submit={submit} perform={perform} />}
-          {section === "reports" && <ReportsPage month={month} setMonth={setMonth} />}
+          {section === "workers" && <WorkersPage admin={true} projects={projects} workers={workers} busy={busy} submit={submit} perform={perform} />}
+          {section === "attendance" && <WeeklyAttendancePage projects={projects} workers={workers} rows={attendance} admin={user.role === "ADMIN"} weekStart={weekStart} setWeekStart={(value) => setWeekStart(mondayFor(value))} busy={busy} submit={submit} perform={perform} />}
+          {section === "per-diems" && <WeeklyPerDiemPage projects={projects} rows={perDiems} admin={user.role === "ADMIN"} weekStart={weekStart} setWeekStart={(value) => setWeekStart(mondayFor(value))} busy={busy} perform={perform} />}
+          {section === "expenses" && <WeeklyExpensesPage projects={projects} rows={expenses} admin={user.role === "ADMIN"} weekStart={weekStart} setWeekStart={(value) => setWeekStart(mondayFor(value))} busy={busy} submit={submit} perform={perform} />}
+          {section === "petty-cash" && <PettyCashPage projects={projects} rows={pettyCash} report={weeklyReport} admin={user.role === "ADMIN"} weekStart={weekStart} setWeekStart={(value) => setWeekStart(mondayFor(value))} busy={busy} submit={submit} perform={perform} />}
+          {section === "users" && user.role === "ADMIN" && <AuthorizedAccountsPage projects={projects} rows={managedUsers} busy={busy} submit={submit} perform={perform} />}
+          {section === "reports" && <WeeklyReportsPage report={weeklyReport} weekStart={weekStart} setWeekStart={(value) => setWeekStart(mondayFor(value))} />}
           {section === "audit" && <AuditPage rows={audit} />}
+          {section === "claims" && <ClaimsPage rows={claims} admin={user.role === "ADMIN"} busy={busy} perform={perform} />}
           {section === "support" && <SupportPage rows={tickets} admin={user.role === "ADMIN"} busy={busy} submit={submit} perform={perform} ticketResult={ticketResult} setTicketResult={setTicketResult} />}
         </section>
       </main>
@@ -247,7 +286,7 @@ function LoginScreen({ error, onLogin, onError }: { error: string; onLogin: (use
   return (
     <main className="login-wrap">
       <div className="login-visual"><div className="login-visual-top"><span className="brand-cube brand-cube-light"><span>R</span></span><span>AVENDAÑO <b>RINDE+</b></span></div><div className="visual-grid" /><div className="floating-shape shape-one" /><div className="floating-shape shape-two" /><div className="visual-copy"><span className="eyebrow light">CONTROL CON CLARIDAD</span><h1>Cada obra,<br />en buenas manos.</h1><p>Gastos, asistencia y viáticos en un mismo espacio de trabajo.</p></div><div className="visual-footer"><span>Gestión responsable</span><span>·</span><span>Decisiones claras</span></div></div>
-      <div className="login-panel"><div className="login-heading"><span className="eyebrow">BIENVENIDO DE VUELTA</span><h2>Inicia sesión</h2><p>Ingresa tus credenciales para continuar.</p></div><form onSubmit={(event) => void handleSubmit(event)} className="form-stack"><label>Correo electrónico<input type="email" name="email" placeholder="nombre@empresa.com" required autoComplete="username" /></label><label>Contraseña<input type="password" name="password" placeholder="••••••••••••" required autoComplete="current-password" /></label><button className="button button-primary button-wide" disabled={busy}>{busy ? "Validando…" : "Ingresar a mi espacio"}<ArrowUpRight size={16} /></button></form>{error && <div className="login-error" role="alert"><CircleAlert size={15} />{error}</div>}<div className="login-foot"><ShieldCheck size={15} /> Acceso protegido y limitado por obra</div><div className="login-brand-small">AVENDAÑO RINDE+ <span>·</span> CONTROL DE GESTIÓN</div></div>
+      <div className="login-panel"><div className="login-heading"><span className="eyebrow">BIENVENIDO DE VUELTA</span><h2>Inicia sesión</h2><p>Ingresa tus credenciales para continuar.</p></div><form onSubmit={(event) => void handleSubmit(event)} className="form-stack"><label>Correo electrónico<input type="email" name="email" placeholder="nombre@empresa.com" required autoComplete="username" /></label><label>Contraseña<input type="password" name="password" placeholder="••••••••••••" required autoComplete="current-password" /></label><button className="button button-primary button-wide" disabled={busy}>{busy ? "Validando…" : "Ingresar a mi espacio"}<ArrowUpRight size={16} /></button></form>{error && <div className="login-error" role="alert"><CircleAlert size={15} />{error}</div>}<div className="login-foot"><ShieldCheck size={15} /> Acceso protegido y limitado por obra</div><div className="login-legal-links"><a href="/politicas">Política de privacidad</a><a href="/terminos">Términos</a><a href="/libro-reclamaciones">Libro de reclamaciones</a></div><div className="login-brand-small">AVENDAÑO RINDE+ <span>·</span> CONTROL DE GESTIÓN</div></div>
     </main>
   );
 }
@@ -326,6 +365,7 @@ function SummaryStrip({ title, summary }: { title: string; summary: { present: n
   return <article className="summary-strip"><span className="eyebrow">{title}</span><div><span><i className="legend-dot dot-green" />Asistencias <b>{summary.present}</b></span><span><i className="legend-dot dot-red" />Faltas <b>{summary.absent}</b></span><span><i className="legend-dot dot-blue" />Justificadas <b>{summary.excused}</b></span></div></article>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function AttendancePage({ projects, workers, rows, admin, month, setMonth, busy, submit, perform }: { projects: Project[]; workers: Worker[]; rows: Attendance[]; admin: boolean; month: string; setMonth: (value: string) => void; busy: boolean; submit: (event: FormEvent<HTMLFormElement>, operation: () => Promise<string>) => Promise<void>; perform: (operation: () => Promise<string>) => Promise<void> }) {
   const defaultProject = projects[0]?.id ?? "";
   const [projectFilterState, setProjectFilter] = useState("__default__");
@@ -349,6 +389,7 @@ function AttendancePage({ projects, workers, rows, admin, month, setMonth, busy,
   </>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function PerDiemPage({ projects, rows, admin, weekStart, setWeekStart, busy, perform }: { projects: Project[]; rows: PerDiem[]; admin: boolean; weekStart: string; setWeekStart: (value: string) => void; busy: boolean; perform: (operation: () => Promise<string>) => Promise<void> }) {
   const [projectIdState, setProjectId] = useState("__default__");
   const projectId = projectIdState === "__default__" ? (projects[0]?.id ?? "") : projectIdState;
@@ -360,6 +401,7 @@ function PerDiemPage({ projects, rows, admin, weekStart, setWeekStart, busy, per
   </>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ExpensesPage({ projects, rows, admin, busy, submit, perform }: { projects: Project[]; rows: Expense[]; admin: boolean; busy: boolean; submit: (event: FormEvent<HTMLFormElement>, operation: () => Promise<string>) => Promise<void>; perform: (operation: () => Promise<string>) => Promise<void> }) {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   return <>
@@ -372,6 +414,7 @@ function ExpensesPage({ projects, rows, admin, busy, submit, perform }: { projec
   </>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function UsersPage({ projects, rows, busy, submit, perform }: { projects: Project[]; rows: ManagedUser[]; busy: boolean; submit: (event: FormEvent<HTMLFormElement>, operation: () => Promise<string>) => Promise<void>; perform: (operation: () => Promise<string>) => Promise<void> }) {
   return <>
     <PageHeading eyebrow="ACCESO Y PERMISOS" title="Cuentas" subtitle="Cada cuenta de obra queda vinculada a un solo proyecto." />
@@ -381,6 +424,7 @@ function UsersPage({ projects, rows, busy, submit, perform }: { projects: Projec
   </>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ReportsPage({ month, setMonth }: { month: string; setMonth: (value: string) => void }) {
   return <>
     <PageHeading eyebrow="ANÁLISIS FINANCIERO" title="Reportes" subtitle="Consulta el gasto total y descarga el detalle en PDF." />
@@ -401,5 +445,112 @@ function SupportPage({ rows, admin, busy, submit, perform, ticketResult, setTick
     <PageHeading eyebrow="AYUDA Y ACOMPAÑAMIENTO" title="Soporte" subtitle="Cuéntanos qué sucede. El equipo recibirá tu ticket y un código de seguimiento." />
     <div className="support-layout"><article className="panel-card support-form-card"><div className="panel-header"><div><span className="eyebrow">NUEVA SOLICITUD</span><h2>¿En qué podemos ayudarte?</h2></div><span className="soft-icon"><LifeBuoy size={17} /></span></div><form className="form-stack" onSubmit={(event) => void submit(event, async () => { const form = event.currentTarget; const body = Object.fromEntries(new FormData(form)); const result = await api<{ ticket: { ticket_code: string; mail_status: string } }>("/api/support", { method: "POST", body: JSON.stringify(body) }); form.reset(); setTicketResult(`${result.ticket.ticket_code} · ${result.ticket.mail_status === "SENT" ? "notificación enviada" : "solicitud guardada"}`); return "Solicitud de soporte registrada."; })}><label>Nombre<input name="name" required maxLength={120} /></label><label>Correo electrónico<input type="email" name="email" required maxLength={254} /></label><label>Asunto<input name="subject" required minLength={4} maxLength={140} /></label><label>Mensaje<textarea name="message" required minLength={10} maxLength={4000} rows={5} placeholder="Describe brevemente lo que necesitas…" /></label><label className="honeypot" aria-hidden="true">Empresa<input name="_company" tabIndex={-1} autoComplete="off" /></label><button className="button button-primary" disabled={busy}>Enviar solicitud <ArrowUpRight size={15} /></button></form>{ticketResult && <p className="ticket-result"><Check size={15} /> Código: {ticketResult}</p>}<p className="support-privacy"><ShieldCheck size={14} /> Tus datos se guardan solo para dar seguimiento a esta solicitud.</p></article>
       <article className="panel-card ticket-list-card"><div className="panel-header"><div><span className="eyebrow">SEGUIMIENTO</span><h2>{admin ? "Tickets recibidos" : "Tus solicitudes"}</h2></div><span className="count-chip">{rows.length}</span></div>{!rows.length ? <EmptyState>Todavía no hay tickets.</EmptyState> : <div className="ticket-list">{rows.map((ticket) => <div className="ticket-row" key={ticket.id}><div className="ticket-code-row"><b>{ticket.ticket_code}</b><StagePill value={ticket.status} /></div><strong>{ticket.subject}</strong><p>{ticket.message}</p><small>{ticket.name} · {dateLabel(ticket.created_at)} · {ticket.mail_status === "SENT" ? "correo enviado" : ticket.mail_status === "FAILED" ? "correo pendiente de envío" : "guardado en el sistema"}</small>{admin && <select className="stage-select ticket-status-select" value={ticket.status} aria-label={`Estado ${ticket.ticket_code}`} onChange={(event) => void perform(async () => { await api("/api/support", { method: "PATCH", body: JSON.stringify({ id: ticket.id, status: event.target.value }) }); return "Estado del ticket actualizado."; })}><option value="PENDING">Pendiente</option><option value="REVIEW">En revisión</option><option value="RESOLVED">Resuelto</option><option value="CLOSED">Cerrado</option></select>}</div>)}</div>}</article></div>
+  </>;
+}
+
+type SubmitHandler = (event: FormEvent<HTMLFormElement>, operation: () => Promise<string>) => Promise<void>;
+type PerformHandler = (operation: () => Promise<string>) => Promise<void>;
+
+function WeeklyAttendancePage({ projects, workers, rows, admin, weekStart, setWeekStart, busy, submit, perform }: { projects: Project[]; workers: Worker[]; rows: Attendance[]; admin: boolean; weekStart: string; setWeekStart: (value: string) => void; busy: boolean; submit: SubmitHandler; perform: PerformHandler }) {
+  const [projectId, setProjectId] = useState("");
+  const [showDeleted, setShowDeleted] = useState(false);
+  const activeProjects = projects.filter((project) => !project.deleted_at && project.status === "ACTIVE");
+  const selectedProject = projectId || (admin ? "" : activeProjects[0]?.id ?? "");
+  const activeWorkers = workers.filter((worker) => !worker.deleted_at && worker.status === "ACTIVE" && (!selectedProject || worker.project_id === selectedProject));
+  const visibleRows = rows.filter((row) => (showDeleted || !row.deleted_at) && (!selectedProject || row.project_id === selectedProject));
+  const activeRows = visibleRows.filter((row) => !row.deleted_at);
+  const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
+  const matrix = new Map(activeRows.map((row) => [`${row.worker_id}:${String(row.work_date).slice(0, 10)}`, row]));
+  const summary = { present: activeRows.filter((row) => row.status === "PRESENT").length, absent: activeRows.filter((row) => row.status === "ABSENT").length, excused: activeRows.filter((row) => row.status === "EXCUSED").length };
+  return <>
+    <PageHeading eyebrow="REGISTRO SEMANAL" title="Asistencia" subtitle={`Semana del ${dateLabel(weekStart)} al ${dateLabel(addDays(weekStart, 6))}. Cada cambio recalcula los viáticos pendientes.`} action={<div className="period-control"><input type="date" value={weekStart} onChange={(event) => setWeekStart(event.target.value)} aria-label="Lunes de la semana" /><select value={selectedProject} onChange={(event) => setProjectId(event.target.value)}>{admin && <option value="">Todas las obras</option>}{activeProjects.map((project) => <option key={project.id} value={project.id}>{project.code} · {project.name}</option>)}</select></div>} />
+    <div className="attendance-summary-grid"><SummaryStrip title="RESUMEN DE LA SEMANA" summary={summary} /><article className="summary-strip"><span className="eyebrow">CONTROL DE REGISTROS</span><div><span>Personas <b>{activeWorkers.length}</b></span><span>Registros <b>{activeRows.length}</b></span>{admin && <label className="toggle-filter"><input type="checkbox" checked={showDeleted} onChange={(event) => setShowDeleted(event.target.checked)} /> Ver eliminados</label>}</div></article></div>
+    <article className="panel-card weekly-card"><div className="panel-header"><div><span className="eyebrow">MATRIZ DE LA SEMANA</span><h2>Asistencia por día</h2></div></div>{!activeWorkers.length ? <EmptyState>No hay trabajadores activos en la obra seleccionada.</EmptyState> : <div className="table-scroll"><table className="week-table"><thead><tr><th>Trabajador</th>{weekDays.map((day, index) => <th key={day}><span>{["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"][index]}</span><small>{day.slice(-2)}</small></th>)}</tr></thead><tbody>{activeWorkers.map((worker) => <tr key={worker.id}><td><b>{worker.first_name} {worker.last_name}</b><small>{worker.dni} · {projects.find((project) => project.id === worker.project_id)?.code ?? ""}</small></td>{weekDays.map((day) => { const record = matrix.get(`${worker.id}:${day}`); return <td key={day}><span className={`attendance-mark ${record ? `mark-${record.status.toLowerCase()}` : "mark-empty"}`} title={record ? stageLabel(record.status) : "Sin registro"}>{record?.status === "PRESENT" ? "✓" : record?.status === "ABSENT" ? "×" : record?.status === "EXCUSED" ? "J" : "·"}</span></td>; })}</tr>)}</tbody></table></div>}</article>
+    <details className="panel-card create-panel" open><summary><span className="create-summary-icon"><Plus size={16} /></span><span><b>Registrar asistencia</b><small>Solo se puede registrar una vez por trabajador y fecha.</small></span><ChevronDown size={16} /></summary><form className="form-grid" onSubmit={(event) => void submit(event, async () => { const form = event.currentTarget; const body = Object.fromEntries(new FormData(form)); await api("/api/attendance", { method: "POST", body: JSON.stringify(body) }); form.reset(); return "Asistencia guardada y viático pendiente recalculado."; })}><label>Trabajador<select name="workerId" required defaultValue="">{activeWorkers.map((worker) => <option key={worker.id} value={worker.id}>{worker.first_name} {worker.last_name} · {worker.dni}</option>)}</select></label><label>Fecha<input name="workDate" type="date" min={weekStart} max={addDays(weekStart, 6)} required /></label><label>Estado<select name="status" defaultValue="PRESENT"><option value="PRESENT">Asistió</option><option value="ABSENT">Faltó</option><option value="EXCUSED">Justificado</option></select></label><label className="span-two">Nota<input name="note" maxLength={300} placeholder="Opcional" /></label><button className="button button-primary form-submit" disabled={busy}>Guardar asistencia</button></form></details>
+    <article className="panel-card table-card"><div className="panel-header"><div><span className="eyebrow">DETALLE SEMANAL</span><h2>Registros de asistencia</h2></div><span className="count-chip">{visibleRows.length} registros</span></div>{!visibleRows.length ? <EmptyState>No hay asistencias para esta semana.</EmptyState> : <div className="table-scroll"><table><thead><tr><th>Fecha</th><th>Trabajador</th><th>Obra</th><th>Estado</th><th>Registró</th><th /></tr></thead><tbody>{visibleRows.map((row) => <tr key={row.id} className={row.deleted_at ? "row-muted" : ""}><td>{dateLabel(row.work_date)}</td><td><b>{row.first_name} {row.last_name}</b><small>{row.dni}</small></td><td>{row.project_code}</td><td>{row.deleted_at ? <StagePill value="CLOSED" /> : <select className="stage-select" value={row.status} onChange={(event) => { const status = event.target.value; void perform(async () => { await api(`/api/attendance/${row.id}`, { method: "PATCH", body: JSON.stringify({ action: "UPDATE", status, note: row.note ?? "" }) }); return "Asistencia actualizada y viático recalculado."; }); }}><option value="PRESENT">Asistió</option><option value="ABSENT">Faltó</option><option value="EXCUSED">Justificado</option></select>}</td><td>{row.recorded_by ?? "—"}</td><td className="align-right">{row.deleted_at ? admin && <button className="text-button" onClick={() => void perform(async () => { await api(`/api/attendance/${row.id}`, { method: "PATCH", body: JSON.stringify({ action: "RESTORE" }) }); return "Asistencia restaurada y viático recalculado."; })}><Undo2 size={14} /> Restaurar</button> : <button className="text-button danger-text" onClick={() => { const reason = window.prompt("Motivo para eliminar esta asistencia:"); if (reason) void perform(async () => { await api(`/api/attendance/${row.id}`, { method: "PATCH", body: JSON.stringify({ action: "DELETE", reason }) }); return "Asistencia eliminada con auditoría."; }); }}><Trash2 size={14} /> Eliminar</button>}</td></tr>)}</tbody></table></div>}</article>
+  </>;
+}
+
+function WeeklyPerDiemPage({ projects, rows, admin, weekStart, setWeekStart, busy, perform }: { projects: Project[]; rows: PerDiem[]; admin: boolean; weekStart: string; setWeekStart: (value: string) => void; busy: boolean; perform: PerformHandler }) {
+  const [projectIdState, setProjectId] = useState("__default__");
+  const [evidenceTarget, setEvidenceTarget] = useState<EvidenceTarget | null>(null);
+  const activeProjects = projects.filter((project) => !project.deleted_at && project.status === "ACTIVE");
+  const projectId = projectIdState === "__default__" ? (admin ? "" : activeProjects[0]?.id ?? "") : projectIdState;
+  const selected = activeProjects.find((project) => project.id === projectId);
+  const shownRows = rows.filter((row) => (!projectId || row.project_id === projectId) && String(row.week_start).slice(0, 10) === weekStart);
+  const days = shownRows.reduce((sum, row) => sum + Number(row.days_attended), 0);
+  const total = shownRows.reduce((sum, row) => sum + Number(row.total_cents), 0);
+  const pending = shownRows.filter((row) => row.stage === "PENDING").reduce((sum, row) => sum + Number(row.total_cents), 0);
+  return <>
+    {evidenceTarget && <EvidenceDialog target={evidenceTarget} busy={busy} perform={perform} onClose={() => setEvidenceTarget(null)} />}
+    <PageHeading eyebrow="LIQUIDACIÓN SEMANAL" title="Viáticos" subtitle="El servidor calcula cada importe con asistencia marcada como asistió y la tarifa vigente de la obra." action={<div className="period-control"><input type="date" value={weekStart} onChange={(event) => setWeekStart(event.target.value)} /><select value={projectId} onChange={(event) => setProjectId(event.target.value)}>{admin && <option value="">Todas las obras</option>}{activeProjects.map((project) => <option key={project.id} value={project.id}>{project.code} · {project.name}</option>)}</select></div>} />
+    <div className="calculation-banner"><span className="calculation-icon"><Wallet size={19} /></span><div><b>{selected ? `Tarifa de ${selected.code}: ${amount(selected.daily_rate_cents)} por día` : "Cálculo por obra"}</b><small>Fórmula visible por trabajador: días asistidos × tarifa diaria = viático semanal.</small></div><button className="button button-primary" disabled={busy || !projectId} onClick={() => void perform(async () => { await api("/api/per-diems", { method: "POST", body: JSON.stringify({ projectId, weekStart }) }); return "Viáticos calculados con asistencia de la semana."; })}>Calcular semana <ArrowUpRight size={15} /></button></div>
+    <div className="mini-stats"><div><span>Personas</span><b>{shownRows.length}</b></div><div><span>Días asistidos</span><b>{days}</b></div><div><span>Total calculado</span><b>{amount(total)}</b></div><div><span>Pendiente</span><b>{amount(pending)}</b></div></div>
+    <article className="panel-card table-card"><div className="panel-header"><div><span className="eyebrow">SEMANA DEL {dateLabel(weekStart).toUpperCase()}</span><h2>Detalle de cálculo</h2></div></div>{!shownRows.length ? <EmptyState>No hay viáticos calculados para esta semana.</EmptyState> : <div className="table-scroll"><table><thead><tr><th>Trabajador</th><th>Obra</th><th>Cálculo</th><th>Etapa</th><th className="align-right">Total</th>{admin && <th />}</tr></thead><tbody>{shownRows.map((row) => <tr key={row.id}><td><b>{row.first_name} {row.last_name}</b><small>DNI {row.dni}</small></td><td>{row.project_code}</td><td><b>{row.days_attended} días</b><small>{row.days_attended} × {amount(row.daily_rate_cents)} = {amount(row.total_cents)}</small></td><td><StagePill value={row.stage} /></td><td className="align-right money-cell">{amount(row.total_cents)}</td>{admin && <td className="align-right">{row.stage === "PENDING" && <button className="text-button" onClick={() => void perform(async () => { await api(`/api/per-diems/${row.id}`, { method: "PATCH", body: JSON.stringify({ stage: "APPROVED" }) }); return "Viático aprobado."; })}>Aprobar</button>}{row.stage === "APPROVED" && <button className="text-button" onClick={() => void perform(async () => { await api(`/api/per-diems/${row.id}`, { method: "PATCH", body: JSON.stringify({ stage: "PAID" }) }); return "Pago registrado."; })}>Marcar pagado</button>}{row.stage === "PAID" && (row.evidence_id ? <a className="text-button" href={`/api/evidences/${row.evidence_id}`} target="_blank" rel="noreferrer">Ver PDF</a> : <button className="text-button" onClick={() => setEvidenceTarget({ entityType: "PER_DIEM", entityId: row.id, projectCode: row.project_code, description: "Constancia de pago de " + row.first_name + " " + row.last_name, amountCents: row.total_cents, date: row.week_start })}>Adjuntar PDF</button>)}{row.stage !== "PENDING" && <button className="text-button" onClick={() => { const reason = window.prompt("Motivo para reabrir el viático:"); if (reason) void perform(async () => { await api(`/api/per-diems/${row.id}`, { method: "PATCH", body: JSON.stringify({ stage: "PENDING", reason }) }); return "Viático reabierto con motivo registrado."; }); }}>Reabrir</button>}</td>}</tr>)}</tbody></table></div>}</article>
+  </>;
+}
+
+function WeeklyExpensesPage({ projects, rows, admin, weekStart, setWeekStart, busy, submit, perform }: { projects: Project[]; rows: Expense[]; admin: boolean; weekStart: string; setWeekStart: (value: string) => void; busy: boolean; submit: SubmitHandler; perform: PerformHandler }) {
+  const [editing, setEditing] = useState<{ expense: Expense; invoiceOnly: boolean } | null>(null);
+  const [evidenceTarget, setEvidenceTarget] = useState<EvidenceTarget | null>(null);
+  const [showDeleted, setShowDeleted] = useState(false);
+  const [projectId, setProjectId] = useState("");
+  const activeProjects = projects.filter((project) => !project.deleted_at && project.status === "ACTIVE");
+  const selectedProject = projectId || (admin ? "" : activeProjects[0]?.id ?? "");
+  const visibleRows = rows.filter((row) => (showDeleted || !row.deleted_at) && (!selectedProject || row.project_id === selectedProject));
+  return <>
+    {evidenceTarget && <EvidenceDialog target={evidenceTarget} busy={busy} perform={perform} onClose={() => setEvidenceTarget(null)} />}
+    <PageHeading eyebrow="CONTROL FINANCIERO SEMANAL" title="Gastos" subtitle="Registra gastos semanales, su fuente de pago y el comprobante para impuestos." action={<div className="period-control"><input type="date" value={weekStart} onChange={(event) => setWeekStart(event.target.value)} /><select value={selectedProject} onChange={(event) => setProjectId(event.target.value)}>{admin && <option value="">Todas las obras</option>}{activeProjects.map((project) => <option key={project.id} value={project.id}>{project.code}</option>)}</select></div>} />
+    {admin && <label className="toggle-filter"><input type="checkbox" checked={showDeleted} onChange={(event) => setShowDeleted(event.target.checked)} /> Mostrar gastos eliminados</label>}
+    {editing && <div className="modal-overlay" role="presentation"><form className="modal-card" onSubmit={(event) => void submit(event, async () => { const form = event.currentTarget; const body = Object.fromEntries(new FormData(form)); if (editing.invoiceOnly) { await api(`/api/expenses/${editing.expense.id}`, { method: "PATCH", body: JSON.stringify({ action: "INVOICE", invoiceStatus: "HECHO", supplier: body.supplier, receiptNumber: body.receiptNumber }) }); } else { await api(`/api/expenses/${editing.expense.id}`, { method: "PATCH", body: JSON.stringify({ action: "UPDATE", expenseDate: body.expenseDate, category: body.category, description: body.description, supplier: body.supplier, receiptNumber: body.receiptNumber, amount: Number(body.amount), paymentSource: body.paymentSource }) }); } setEditing(null); return editing.invoiceOnly ? "Factura marcada como hecha y disponible para control tributario." : "Gasto corregido y registrado en auditoría."; })}><div className="modal-heading"><div><span className="eyebrow">{editing.invoiceOnly ? "REGISTRAR FACTURA" : "EDITAR GASTO PENDIENTE"}</span><h2>{editing.expense.project_code} · {amount(editing.expense.amount_cents)}</h2></div><button type="button" className="icon-button" onClick={() => setEditing(null)}><X size={15} /></button></div>{editing.invoiceOnly ? <div className="form-grid"><label>Proveedor<input name="supplier" defaultValue={editing.expense.supplier ?? ""} required /></label><label>Número de comprobante<input name="receiptNumber" defaultValue={editing.expense.receipt_number ?? ""} required /></label></div> : <div className="form-grid"><label>Fecha<input name="expenseDate" type="date" defaultValue={String(editing.expense.expense_date).slice(0, 10)} required /></label><label>Categoría<input name="category" defaultValue={editing.expense.category} required /></label><label>Importe (S/)<input name="amount" type="number" min="0.01" step="0.01" defaultValue={(editing.expense.amount_cents / 100).toFixed(2)} required /></label><label className="span-two">Descripción<input name="description" defaultValue={editing.expense.description} required /></label><label>Proveedor<input name="supplier" defaultValue={editing.expense.supplier ?? ""} /></label><label>Número de comprobante<input name="receiptNumber" defaultValue={editing.expense.receipt_number ?? ""} /></label><label>Fuente de pago<select name="paymentSource" defaultValue={editing.expense.payment_source ?? "DIRECT"}><option value="DIRECT">Pago directo</option><option value="PETTY_CASH">Caja chica</option></select></label></div>}<div className="modal-actions"><button type="button" className="button button-quiet" onClick={() => setEditing(null)}>Cancelar</button><button className="button button-primary" disabled={busy}>{editing.invoiceOnly ? "Confirmar factura" : "Guardar cambios"}</button></div></form></div>}
+    <details className="panel-card create-panel" open><summary><span className="create-summary-icon"><Plus size={16} /></span><span><b>Registrar gasto</b><small>La semana se asigna automáticamente desde la fecha del gasto.</small></span><ChevronDown size={16} /></summary><form className="form-grid" onSubmit={(event) => void submit(event, async () => { const form = event.currentTarget; const body = Object.fromEntries(new FormData(form)); await api("/api/expenses", { method: "POST", body: JSON.stringify({ ...body, amount: Number(body.amount) }) }); form.reset(); return "Gasto semanal registrado como pendiente."; })}><label>Obra<select name="projectId" required defaultValue={selectedProject}>{activeProjects.filter((project) => !selectedProject || project.id === selectedProject).map((project) => <option key={project.id} value={project.id}>{project.code} · {project.name}</option>)}</select></label><label>Fecha<input name="expenseDate" type="date" min={weekStart} max={addDays(weekStart, 6)} required /></label><label>Categoría<input name="category" required placeholder="Materiales" /></label><label>Importe (S/)<input name="amount" type="number" step="0.01" min="0.01" required /></label><label>Fuente de pago<select name="paymentSource" defaultValue="DIRECT"><option value="DIRECT">Pago directo</option><option value="PETTY_CASH">Caja chica</option></select></label><label className="span-two">Descripción<input name="description" required placeholder="Detalle del gasto" /></label><label>Proveedor<input name="supplier" /></label><label>Número de comprobante<input name="receiptNumber" /></label><button className="button button-primary form-submit" disabled={busy}>Guardar gasto</button></form></details>
+    <article className="panel-card table-card"><div className="panel-header"><div><span className="eyebrow">SEMANA DEL {dateLabel(weekStart).toUpperCase()}</span><h2>Registro de gastos</h2></div><span className="count-chip">{visibleRows.length} registros</span></div>{!visibleRows.length ? <EmptyState>No hay gastos para esta semana.</EmptyState> : <div className="table-scroll"><table><thead><tr><th>Descripción</th><th>Obra</th><th>Fecha</th><th>Pago</th><th>Factura</th><th>Etapa</th><th className="align-right">Importe</th><th /></tr></thead><tbody>{visibleRows.map((row) => <tr key={row.id} className={row.deleted_at ? "row-muted" : ""}><td><b>{row.description}</b><small>{row.category}{row.receipt_number ? ` · ${row.receipt_number}` : ""}</small></td><td>{row.project_code}</td><td>{dateLabel(row.expense_date)}</td><td><StagePill value={row.payment_source ?? "DIRECT"} /></td><td>{row.deleted_at ? "—" : <StagePill value={row.invoice_status ?? "PENDING"} />}</td><td><StagePill value={row.deleted_at ? "CLOSED" : row.stage} /></td><td className="align-right money-cell">{amount(row.amount_cents)}</td><td className="align-right">{row.deleted_at ? admin && <button className="text-button" onClick={() => void perform(async () => { await api(`/api/expenses/${row.id}`, { method: "PATCH", body: JSON.stringify({ action: "RESTORE" }) }); return "Gasto restaurado."; })}><Undo2 size={14} /> Restaurar</button> : <><button className="text-button" onClick={() => setEditing({ expense: row, invoiceOnly: false })} disabled={row.stage !== "PENDING"}>Editar</button>{admin && row.stage === "PENDING" && <button className="text-button" onClick={() => void perform(async () => { await api(`/api/expenses/${row.id}`, { method: "PATCH", body: JSON.stringify({ action: "STAGE", stage: "APPROVED" }) }); return "Gasto aprobado."; })}>Aprobar</button>}{admin && row.stage === "APPROVED" && <button className="text-button" onClick={() => void perform(async () => { await api(`/api/expenses/${row.id}`, { method: "PATCH", body: JSON.stringify({ action: "STAGE", stage: "PAID" }) }); return "Pago registrado."; })}>Marcar pagado</button>}{row.evidence_id ? <a className="text-button" href={`/api/evidences/${row.evidence_id}`} target="_blank" rel="noreferrer">Ver PDF</a> : <button className="text-button" onClick={() => setEvidenceTarget({ entityType: "EXPENSE", entityId: row.id, projectCode: row.project_code, description: row.description, amountCents: row.amount_cents, date: row.expense_date, supplier: row.supplier })}>Adjuntar PDF</button>}{row.stage === "PENDING" && <button className="text-button danger-text" onClick={() => { const reason = window.prompt("Motivo para eliminar este gasto:"); if (reason) void perform(async () => { await api(`/api/expenses/${row.id}`, { method: "PATCH", body: JSON.stringify({ action: "DELETE", reason }) }); return "Gasto eliminado con auditoría."; }); }}><Trash2 size={14} /> Eliminar</button>}</>}</td></tr>)}</tbody></table></div>}</article>
+  </>;
+}
+
+function PettyCashPage({ projects, rows, report, admin, weekStart, setWeekStart, busy, submit, perform }: { projects: Project[]; rows: PettyCash[]; report: WeeklyReport | null; admin: boolean; weekStart: string; setWeekStart: (value: string) => void; busy: boolean; submit: SubmitHandler; perform: PerformHandler }) {
+  const [projectId, setProjectId] = useState("");
+  const [evidenceTarget, setEvidenceTarget] = useState<EvidenceTarget | null>(null);
+  const [showDeleted, setShowDeleted] = useState(false);
+  const activeProjects = projects.filter((project) => !project.deleted_at && project.status === "ACTIVE");
+  const selectedProject = projectId || (admin ? "" : activeProjects[0]?.id ?? "");
+  const visibleRows = rows.filter((row) => (showDeleted || !row.deleted_at) && (!selectedProject || row.project_id === selectedProject));
+  const totals = report?.totals;
+  return <>
+    {evidenceTarget && <EvidenceDialog target={evidenceTarget} busy={busy} perform={perform} onClose={() => setEvidenceTarget(null)} />}
+    <PageHeading eyebrow="CONTROL DE EFECTIVO SEMANAL" title="Caja chica" subtitle="Fondo, reposiciones y devoluciones. Los gastos pagados con caja chica reducen el saldo sin duplicar el gasto." action={<div className="period-control"><input type="date" value={weekStart} onChange={(event) => setWeekStart(event.target.value)} /><select value={selectedProject} onChange={(event) => setProjectId(event.target.value)}>{admin && <option value="">Todas las obras</option>}{activeProjects.map((project) => <option key={project.id} value={project.id}>{project.code}</option>)}</select></div>} />
+    <div className="mini-stats"><div><span>Ingresos de caja</span><b>{amount(totals?.pettyCashInCents)}</b></div><div><span>Devoluciones</span><b>{amount(totals?.pettyCashReturnCents)}</b></div><div><span>Gastos desde caja</span><b>{amount(totals?.pettyCashExpenseCents)}</b></div><div><span>Saldo acumulado</span><b>{amount(totals?.pettyCashBalanceCents)}</b></div></div>
+    {admin && <label className="toggle-filter"><input type="checkbox" checked={showDeleted} onChange={(event) => setShowDeleted(event.target.checked)} /> Mostrar movimientos eliminados</label>}
+    <details className="panel-card create-panel" open><summary><span className="create-summary-icon"><Plus size={16} /></span><span><b>Registrar movimiento de caja chica</b><small>El saldo se calcula en el servidor y se cruza con los gastos pagados desde caja chica.</small></span><ChevronDown size={16} /></summary><form className="form-grid" onSubmit={(event) => void submit(event, async () => { const form = event.currentTarget; const body = Object.fromEntries(new FormData(form)); await api("/api/petty-cash", { method: "POST", body: JSON.stringify({ ...body, amount: Number(body.amount) }) }); form.reset(); return "Movimiento de caja chica registrado."; })}><label>Obra<select name="projectId" required defaultValue={selectedProject}>{activeProjects.filter((project) => !selectedProject || project.id === selectedProject).map((project) => <option key={project.id} value={project.id}>{project.code} · {project.name}</option>)}</select></label><label>Fecha<input name="movementDate" type="date" min={weekStart} max={addDays(weekStart, 6)} required /></label><label>Movimiento<select name="movementType" defaultValue="FUND"><option value="FUND">Fondo asignado</option><option value="REPLENISHMENT">Reposición</option><option value="RETURN">Devolución</option></select></label><label>Importe (S/)<input name="amount" type="number" min="0.01" step="0.01" required /></label><label className="span-two">Descripción<input name="description" required placeholder="Ej. Fondo asignado para compras menores" /></label><label>Número de comprobante<input name="receiptNumber" /></label><button className="button button-primary form-submit" disabled={busy}>Guardar movimiento</button></form></details>
+    <article className="panel-card table-card"><div className="panel-header"><div><span className="eyebrow">MOVIMIENTOS DE LA SEMANA</span><h2>Registro de caja chica</h2></div><span className="count-chip">{visibleRows.length} movimientos</span></div>{!visibleRows.length ? <EmptyState>No hay movimientos de caja chica para esta semana.</EmptyState> : <div className="table-scroll"><table><thead><tr><th>Fecha</th><th>Obra</th><th>Movimiento</th><th>Detalle</th><th>Comprobante</th><th className="align-right">Importe</th><th /></tr></thead><tbody>{visibleRows.map((row) => <tr key={row.id} className={row.deleted_at ? "row-muted" : ""}><td>{dateLabel(row.movement_date)}</td><td>{row.project_code}</td><td><StagePill value={row.movement_type} /></td><td>{row.description}</td><td>{row.deleted_at ? "—" : row.evidence_id ? <a className="text-button" href={`/api/evidences/${row.evidence_id}`} target="_blank" rel="noreferrer">Ver PDF</a> : <button className="text-button" onClick={() => setEvidenceTarget({ entityType: "PETTY_CASH", entityId: row.id, projectCode: row.project_code, description: row.description, amountCents: row.amount_cents, date: row.movement_date })}>Adjuntar PDF</button>}<small>{row.receipt_number || "Sin número"}</small></td><td className="align-right money-cell">{amount(row.amount_cents)}</td><td className="align-right">{row.deleted_at ? admin && <button className="text-button" onClick={() => void perform(async () => { await api(`/api/petty-cash/${row.id}`, { method: "PATCH", body: JSON.stringify({ action: "RESTORE" }) }); return "Movimiento de caja chica restaurado."; })}><Undo2 size={14} /> Restaurar</button> : <button className="text-button danger-text" onClick={() => { const reason = window.prompt("Motivo para eliminar este movimiento:"); if (reason) void perform(async () => { await api(`/api/petty-cash/${row.id}`, { method: "PATCH", body: JSON.stringify({ action: "DELETE", reason }) }); return "Movimiento de caja chica eliminado con auditoría."; }); }}><Trash2 size={14} /> Eliminar</button>}</td></tr>)}</tbody></table></div>}</article>
+  </>;
+}
+
+function AuthorizedAccountsPage({ projects, rows, busy, submit, perform }: { projects: Project[]; rows: ManagedUser[]; busy: boolean; submit: SubmitHandler; perform: PerformHandler }) {
+  const activeProjects = projects.filter((project) => !project.deleted_at && project.status === "ACTIVE");
+  return <>
+    <PageHeading eyebrow="ACCESO POR OBRA" title="Cuentas autorizadas" subtitle="Autoriza personas por una obra. Sus cambios se guardan en la misma base y aparecen en el registro global y auditoría." />
+    <div className="role-note"><ShieldCheck size={18} /><span><b>Permiso local por obra.</b> Cada cuenta autorizada solo puede operar su obra asignada; administración conserva la vista cruzada de todas las obras.</span></div>
+    <details className="panel-card create-panel" open><summary><span className="create-summary-icon"><Plus size={16} /></span><span><b>Autorizar cuenta local</b><small>La cuenta podrá registrar trabajadores, asistencia, gastos, viáticos y caja chica de una sola obra.</small></span><ChevronDown size={16} /></summary><form className="form-grid" onSubmit={(event) => void submit(event, async () => { const form = event.currentTarget; const body = Object.fromEntries(new FormData(form)); await api("/api/users", { method: "POST", body: JSON.stringify(body) }); form.reset(); return "Cuenta local autorizada para la obra seleccionada."; })}><label>Nombre<input name="name" required /></label><label>Correo<input name="email" type="email" required /></label><label>Contraseña inicial<input name="password" type="password" minLength={14} required autoComplete="new-password" /></label><label>Obra autorizada<select name="projectId" required defaultValue="">{activeProjects.map((project) => <option key={project.id} value={project.id}>{project.code} · {project.name}</option>)}</select></label><button className="button button-primary form-submit" disabled={busy}>Crear autorización</button></form></details>
+    <article className="panel-card table-card"><div className="panel-header"><div><span className="eyebrow">AUTORIZACIONES ACTIVAS</span><h2>Cuentas y alcance</h2></div><span className="count-chip">{rows.length} cuentas</span></div>{!rows.length ? <EmptyState>No hay cuentas registradas.</EmptyState> : <div className="table-scroll"><table><thead><tr><th>Persona</th><th>Correo</th><th>Obra autorizada</th><th>Autorizó</th><th>Estado</th><th /></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td><b>{row.name}</b><small>{row.role === "ADMIN" ? "Administración global" : "Operación local por obra"}</small></td><td>{row.email}</td><td>{row.project_code ?? "Acceso global"}</td><td>{row.authorized_by_name ?? (row.role === "ADMIN" ? "Sistema" : "Administración")}{row.authorized_at ? <small>{dateLabel(row.authorized_at)}</small> : null}</td><td><StagePill value={row.active ? "ACTIVE" : "CLOSED"} /></td><td className="align-right">{row.role !== "ADMIN" && <button className="text-button" onClick={() => void perform(async () => { await api(`/api/users/${row.id}`, { method: "PATCH", body: JSON.stringify({ active: !row.active }) }); return row.active ? "Cuenta desactivada y sesiones cerradas." : "Cuenta reactivada."; })}>{row.active ? "Desactivar" : "Reactivar"}</button>}</td></tr>)}</tbody></table></div>}</article>
+  </>;
+}
+
+function WeeklyReportsPage({ report, weekStart, setWeekStart }: { report: WeeklyReport | null; weekStart: string; setWeekStart: (value: string) => void }) {
+  const totals = report?.totals;
+  return <>
+    <PageHeading eyebrow="REGISTRO GENERAL" title="Cruce semanal de información" subtitle="Consolida gastos, viáticos y caja chica de todas las obras autorizadas para tu cuenta." action={<div className="period-control"><input type="date" value={weekStart} onChange={(event) => setWeekStart(event.target.value)} /><a className="button button-primary" href={`/api/reports/pdf?weekStart=${weekStart}`}><ArrowDownToLine size={16} /> Descargar PDF</a></div>} />
+    <div className="mini-stats"><div><span>Gastos</span><b>{amount(totals?.expenseCents)}</b></div><div><span>Viáticos</span><b>{amount(totals?.perDiemCents)}</b></div><div><span>Operación</span><b>{amount(totals?.operationalCents)}</b></div><div><span>Saldo caja chica</span><b>{amount(totals?.pettyCashBalanceCents)}</b></div></div>
+    <article className="panel-card report-summary-card"><div className="panel-header"><div><span className="eyebrow">INDICADORES TRIBUTARIOS Y DE PAGO</span><h2>Resumen de la semana</h2></div><span className="count-chip">{report?.movements.length ?? 0} movimientos</span></div><div className="report-kpis"><div><span>Facturas hechas</span><b>{amount(totals?.invoiceDoneCents)}</b><small>Gastos con comprobante registrado</small></div><div><span>Pendiente</span><b>{amount(totals?.pendingCents)}</b><small>Gastos y viáticos por revisar</small></div><div><span>Pagado</span><b>{amount(totals?.paidCents)}</b><small>Gastos y viáticos pagados</small></div><div><span>Ingresos de caja</span><b>{amount(totals?.pettyCashInCents)}</b><small>Fondos y reposiciones de la semana</small></div></div></article>
+    <article className="panel-card table-card"><div className="panel-header"><div><span className="eyebrow">VISTA CONSOLIDADA</span><h2>Movimientos cruzados</h2></div><span className="count-chip">{report?.weekStart ? `${dateLabel(report.weekStart)} — ${dateLabel(report.weekEnd)}` : "Cargando"}</span></div>{!report?.movements.length ? <EmptyState>No hay movimientos para esta semana.</EmptyState> : <div className="table-scroll"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Obra</th><th>Detalle</th><th>Estado</th><th>Factura</th><th className="align-right">Importe</th></tr></thead><tbody>{report.movements.map((movement) => <tr key={`${movement.kind}-${movement.id}`}><td>{dateLabel(movement.movementDate)}</td><td><b>{movement.kind === "GASTO" ? "Gasto" : movement.kind === "VIATICO" ? "Viático" : "Caja chica"}</b><small>{movement.category}</small></td><td>{movement.projectCode}</td><td>{movement.description}{movement.daysAttended !== null && <small>{movement.daysAttended} días × tarifa semanal</small>}</td><td><StagePill value={movement.stage} /></td><td>{movement.invoiceStatus ? <StagePill value={movement.invoiceStatus} /> : "—"}</td><td className="align-right money-cell">{movement.cashDirection === "OUT" ? "− " : ""}{amount(movement.amountCents)}</td></tr>)}</tbody></table></div>}</article>
+  </>;
+}
+
+function ClaimsPage({ rows, admin, busy, perform }: { rows: Claim[]; admin: boolean; busy: boolean; perform: PerformHandler }) {
+  return <>
+    <PageHeading eyebrow="ATENCIÓN AL USUARIO" title="Libro de reclamaciones" subtitle={admin ? "Registro global de reclamaciones y respuestas." : "Consulta las reclamaciones vinculadas a tu obra autorizada."} action={<a className="button button-primary" href="/libro-reclamaciones"><BookOpenCheck size={16} /> Registrar reclamación</a>} />
+    <div className="role-note"><BookOpenCheck size={18} /><span><b>Registro inalterable.</b> Las reclamaciones se conservan con su código, fecha, aceptación de políticas y trazabilidad. No se eliminan desde esta pantalla.</span></div>
+    <article className="panel-card table-card"><div className="panel-header"><div><span className="eyebrow">REGISTROS RECIBIDOS</span><h2>Seguimiento</h2></div><span className="count-chip">{rows.length} registros</span></div>{!rows.length ? <EmptyState>Todavía no hay reclamaciones vinculadas a este alcance.</EmptyState> : <div className="table-scroll"><table><thead><tr><th>Código</th><th>Fecha</th><th>Solicitante</th><th>Obra</th><th>Tipo</th><th>Detalle</th><th>Estado</th>{admin && <th />}</tr></thead><tbody>{rows.map((claim) => <tr key={claim.id}><td><b>{claim.claim_code}</b></td><td>{dateLabel(claim.created_at)}</td><td>{claim.full_name}<small>{claim.email}</small></td><td>{claim.project_code ?? "No especificada"}</td><td><StagePill value={claim.claim_type} /></td><td><details className="audit-details"><summary>Ver solicitud</summary><p>{claim.detail}</p><p><b>Pedido:</b> {claim.request_text}</p>{claim.response && <p><b>Respuesta:</b> {claim.response}</p>}</details></td><td><StagePill value={claim.status} /></td>{admin && <td className="align-right"><select className="stage-select" value={claim.status} disabled={busy} onChange={(event) => { const status = event.target.value; const response = status === "RESPONDED" ? window.prompt("Respuesta para la reclamación:", claim.response ?? "") : claim.response ?? ""; if (status !== "RESPONDED" || response !== null) void perform(async () => { await api("/api/claims", { method: "PATCH", body: JSON.stringify({ id: claim.id, status, response }) }); return "Estado de reclamación actualizado."; }); }}><option value="RECEIVED">Recibido</option><option value="REVIEW">En revisión</option><option value="RESPONDED">Respondido</option><option value="CLOSED">Cerrado</option></select></td>}</tr>)}</tbody></table></div>}</article>
+    <article className="panel-card legal-links-card"><span className="eyebrow">INFORMACIÓN LEGAL</span><h2>Políticas y condiciones</h2><p>El formulario conserva la versión de política aceptada. Consulta los textos vigentes antes de registrar una solicitud.</p><div><a className="text-button" href="/politicas">Política de privacidad <ArrowUpRight size={14} /></a><a className="text-button" href="/terminos">Términos y condiciones <ArrowUpRight size={14} /></a></div></article>
   </>;
 }

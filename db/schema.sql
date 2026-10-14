@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   role VARCHAR(24) NOT NULL CHECK (role IN ('ADMIN', 'PROJECT_USER')),
   project_id UUID REFERENCES projects(id) ON DELETE RESTRICT,
+  authorized_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  authorized_at TIMESTAMPTZ,
   active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -103,12 +105,15 @@ CREATE TABLE IF NOT EXISTS expenses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
   expense_date DATE NOT NULL,
+  week_start DATE NOT NULL,
   category VARCHAR(80) NOT NULL,
   description VARCHAR(240) NOT NULL,
   supplier VARCHAR(160),
   receipt_number VARCHAR(100),
   amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
   stage VARCHAR(16) NOT NULL DEFAULT 'PENDING' CHECK (stage IN ('PENDING', 'APPROVED', 'PAID')),
+  invoice_status VARCHAR(16) NOT NULL DEFAULT 'PENDING' CHECK (invoice_status IN ('PENDING', 'HECHO')),
+  payment_source VARCHAR(16) NOT NULL DEFAULT 'DIRECT' CHECK (payment_source IN ('DIRECT', 'PETTY_CASH')),
   recorded_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -119,6 +124,73 @@ CREATE TABLE IF NOT EXISTS expenses (
   delete_reason VARCHAR(300)
 );
 CREATE INDEX IF NOT EXISTS expenses_project_date_idx ON expenses(project_id, expense_date DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS expenses_project_week_idx ON expenses(project_id, week_start DESC) WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS petty_cash_movements (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+  week_start DATE NOT NULL,
+  movement_date DATE NOT NULL,
+  movement_type VARCHAR(20) NOT NULL CHECK (movement_type IN ('FUND', 'REPLENISHMENT', 'RETURN')),
+  description VARCHAR(240) NOT NULL,
+  receipt_number VARCHAR(100),
+  amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+  recorded_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  deleted_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  delete_reason VARCHAR(300)
+);
+CREATE INDEX IF NOT EXISTS petty_cash_project_week_idx ON petty_cash_movements(project_id, week_start DESC) WHERE deleted_at IS NULL;
+CREATE TABLE IF NOT EXISTS document_evidences (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  entity_type VARCHAR(16) NOT NULL CHECK (entity_type IN ('EXPENSE', 'PETTY_CASH', 'PER_DIEM')),
+  entity_id UUID NOT NULL,
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+  original_name VARCHAR(160) NOT NULL,
+  storage_key VARCHAR(180) NOT NULL UNIQUE,
+  sha256 CHAR(64) NOT NULL,
+  byte_size INTEGER NOT NULL CHECK (byte_size BETWEEN 1 AND 5242880),
+  mime_type VARCHAR(64) NOT NULL CHECK (mime_type = 'application/pdf'),
+  document_number VARCHAR(100) NOT NULL,
+  document_amount_cents INTEGER NOT NULL CHECK (document_amount_cents > 0),
+  document_date DATE,
+  uploaded_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  deleted_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  delete_reason VARCHAR(300)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS document_evidences_one_active_per_entity_idx ON document_evidences(entity_type, entity_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS document_evidences_project_created_idx ON document_evidences(project_id, created_at DESC) WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS claims (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  claim_code VARCHAR(24) NOT NULL UNIQUE,
+  full_name VARCHAR(160) NOT NULL,
+  document_type VARCHAR(24) NOT NULL CHECK (document_type IN ('DNI', 'CE', 'PASSPORT', 'RUC', 'OTHER')),
+  document_number VARCHAR(32) NOT NULL,
+  email VARCHAR(254) NOT NULL,
+  phone VARCHAR(32) NOT NULL,
+  address VARCHAR(240) NOT NULL,
+  project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+  claim_type VARCHAR(16) NOT NULL CHECK (claim_type IN ('COMPLAINT', 'CLAIM')),
+  detail VARCHAR(4000) NOT NULL,
+  request_text VARCHAR(2000) NOT NULL,
+  policy_version VARCHAR(24) NOT NULL,
+  accepted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  requester_ip VARCHAR(64) NOT NULL,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'RECEIVED' CHECK (status IN ('RECEIVED', 'REVIEW', 'RESPONDED', 'CLOSED')),
+  response TEXT,
+  responded_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  responded_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS claims_created_idx ON claims(created_at DESC);
+CREATE INDEX IF NOT EXISTS claims_requester_idx ON claims(requester_ip, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS support_tickets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

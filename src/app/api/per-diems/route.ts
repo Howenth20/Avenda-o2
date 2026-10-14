@@ -4,7 +4,7 @@ import { inTransaction, pool } from "@/lib/db";
 import { recalculatePerDiem } from "@/lib/finance";
 import { assertSameOrigin, errorResponse, parseJson, requestIp } from "@/lib/http";
 import { ApiError } from "@/lib/types";
-import { businessToday, isoDateSchema } from "@/lib/validation";
+import { businessToday, isoDateSchema, mondayOfWeek } from "@/lib/validation";
 
 const runSchema = z.object({ projectId: z.string().uuid(), weekStart: isoDateSchema });
 
@@ -12,9 +12,11 @@ export async function GET(request: Request) {
   try {
     const user = await requireUser();
     const params = new URL(request.url).searchParams;
+    const weekStart = params.get("weekStart");
     const month = params.get("month") ?? businessToday().slice(0, 7);
-    if (!/^\d{4}-\d{2}$/.test(month)) throw new ApiError(422, "El mes debe tener el formato AAAA-MM.");
-    const values: unknown[] = [`${month}-01`];
+    if (weekStart && mondayOfWeek(weekStart) !== weekStart) throw new ApiError(422, "Selecciona el lunes de la semana.");
+    if (!weekStart && !/^\d{4}-\d{2}$/.test(month)) throw new ApiError(422, "El mes debe tener el formato AAAA-MM.");
+    const values: unknown[] = [weekStart ?? `${month}-01`];
     let scope = "";
     if (user.role === "PROJECT_USER") {
       values.push(user.projectId);
@@ -23,10 +25,11 @@ export async function GET(request: Request) {
     const result = await pool.query(
       `SELECT d.id, d.worker_id, d.project_id, d.week_start, d.days_attended, d.daily_rate_cents,
               d.total_cents, d.stage, d.calculated_at, d.approved_at, d.paid_at,
-              w.first_name, w.last_name, w.dni, p.code AS project_code, p.name AS project_name
+              w.first_name, w.last_name, w.dni, p.code AS project_code, p.name AS project_name,
+              evidence.id AS evidence_id,evidence.original_name AS evidence_name,evidence.document_number AS evidence_document_number,evidence.document_date AS evidence_document_date
        FROM per_diems d JOIN workers w ON w.id=d.worker_id JOIN projects p ON p.id=d.project_id
-       WHERE d.week_start >= date_trunc('month', $1::date)::date
-         AND d.week_start < (date_trunc('month', $1::date) + INTERVAL '1 month')::date ${scope}
+       LEFT JOIN document_evidences evidence ON evidence.entity_type='PER_DIEM' AND evidence.entity_id=d.id AND evidence.deleted_at IS NULL
+       WHERE ${weekStart ? "d.week_start=$1::date" : "d.week_start >= date_trunc('month', $1::date)::date AND d.week_start < (date_trunc('month', $1::date) + INTERVAL '1 month')::date"} ${scope}
        ORDER BY d.week_start DESC, w.last_name`, values,
     );
     return Response.json({ perDiems: result.rows });

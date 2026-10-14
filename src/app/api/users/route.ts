@@ -18,9 +18,9 @@ export async function GET() {
   try {
     await requireAdmin();
     const result = await pool.query(
-      `SELECT u.id, u.name, u.email, u.role, u.project_id, u.active, u.created_at,
-              p.code AS project_code, p.name AS project_name
-       FROM users u LEFT JOIN projects p ON p.id=u.project_id
+      `SELECT u.id, u.name, u.email, u.role, u.project_id, u.active, u.created_at,u.authorized_at,
+              p.code AS project_code, p.name AS project_name,authorizer.name AS authorized_by_name
+       FROM users u LEFT JOIN projects p ON p.id=u.project_id LEFT JOIN users authorizer ON authorizer.id=u.authorized_by
        ORDER BY u.role, u.name LIMIT 500`,
     );
     return Response.json({ users: result.rows });
@@ -39,10 +39,10 @@ export async function POST(request: Request) {
       const project = await client.query("SELECT id FROM projects WHERE id=$1 AND status='ACTIVE' AND deleted_at IS NULL", [input.projectId]);
       if (!project.rowCount) throw new ApiError(422, "Selecciona una obra activa.");
       const result = await client.query(
-        `INSERT INTO users (name,email,password_hash,role,project_id)
-         VALUES ($1,$2,$3,'PROJECT_USER',$4)
-         RETURNING id,name,email,role,project_id,active,created_at`,
-        [input.name, input.email, passwordHash, input.projectId],
+        `INSERT INTO users (name,email,password_hash,role,project_id,authorized_by,authorized_at)
+         VALUES ($1,$2,$3,'PROJECT_USER',$4,$5,NOW())
+         RETURNING id,name,email,role,project_id,active,authorized_at,created_at`,
+        [input.name, input.email, passwordHash, input.projectId, actor.id],
       );
       await recordAudit(client, { actorId: actor.id, projectId: input.projectId, action: "CREATE", entityType: "user", entityId: result.rows[0].id, before: null, after: result.rows[0], ip: requestIp(request) });
       return result.rows[0];

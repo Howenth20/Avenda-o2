@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { recordAudit } from "@/lib/audit";
-import { requireAdmin, requireUser } from "@/lib/auth";
+import { ensureProjectAccess, requireUser } from "@/lib/auth";
 import { inTransaction, pool } from "@/lib/db";
 import { assertSameOrigin, errorResponse, isUniqueViolation, parseJson, requestIp } from "@/lib/http";
 import { ApiError } from "@/lib/types";
@@ -45,11 +45,12 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     assertSameOrigin(request);
-    const user = await requireAdmin();
+    const user = await requireUser();
     const input = workerSchema.parse(await parseJson(request));
     const worker = await inTransaction(async (client) => {
-      const project = await client.query("SELECT id FROM projects WHERE id = $1 AND deleted_at IS NULL", [input.projectId]);
+      const project = await client.query("SELECT id FROM projects WHERE id = $1 AND deleted_at IS NULL AND status='ACTIVE'", [input.projectId]);
       if (!project.rowCount) throw new ApiError(422, "Selecciona una obra activa.");
+      ensureProjectAccess(user, input.projectId);
       const result = await client.query(
         `INSERT INTO workers (project_id, dni, first_name, last_name, job_title, phone, email, address, hired_on)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { recordAudit } from "@/lib/audit";
-import { requireAdmin } from "@/lib/auth";
+import { ensureProjectAccess, requireUser } from "@/lib/auth";
 import { inTransaction } from "@/lib/db";
 import { assertSameOrigin, errorResponse, isUniqueViolation, parseJson, requestIp } from "@/lib/http";
 import { ApiError } from "@/lib/types";
@@ -24,15 +24,17 @@ const updateSchema = z.object({
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     assertSameOrigin(request);
-    const user = await requireAdmin();
+    const user = await requireUser();
     const { id } = await context.params;
     uuidSchema.parse(id);
     const input = updateSchema.parse(await parseJson(request));
     if (input.action === "DELETE" && !input.reason) throw new ApiError(422, "Indica el motivo para dar de baja al trabajador.");
+    if (input.action === "RESTORE" && user.role !== "ADMIN") throw new ApiError(403, "Solo administración puede restaurar trabajadores.");
     const worker = await inTransaction(async (client) => {
       const found = await client.query("SELECT * FROM workers WHERE id = $1 FOR UPDATE", [id]);
       const before = found.rows[0];
       if (!before) throw new ApiError(404, "Trabajador no encontrado.");
+      ensureProjectAccess(user, before.project_id);
       let result;
       if (input.action === "DELETE") {
         result = await client.query("UPDATE workers SET deleted_at = NOW(), deleted_by = $2, delete_reason = $3, status = 'INACTIVE', updated_at = NOW() WHERE id = $1 RETURNING *", [id, user.id, input.reason]);
@@ -40,6 +42,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
         result = await client.query("UPDATE workers SET deleted_at = NULL, deleted_by = NULL, delete_reason = NULL, status = 'ACTIVE', updated_at = NOW() WHERE id = $1 RETURNING *", [id]);
       } else {
         const projectId = input.projectId ?? before.project_id;
+        if (user.role === "PROJECT_USER" && projectId !== before.project_id) throw new ApiError(403, "No puedes mover trabajadores a otra obra.");
+        const destination = await client.query("SELECT id FROM projects WHERE id=$1 AND deleted_at IS NULL AND status='ACTIVE'", [projectId]);
+        if (!destination.rowCount) throw new ApiError(422, "Selecciona una obra activa.");
         result = await client.query(
           `UPDATE workers SET project_id=$2, dni=$3, first_name=$4, last_name=$5, job_title=$6,
            phone=$7, email=$8, address=$9, hired_on=$10, status=$11, updated_at=NOW()
