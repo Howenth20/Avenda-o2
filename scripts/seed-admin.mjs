@@ -8,7 +8,12 @@ if (!DATABASE_URL || !ADMIN_NAME || !ADMIN_EMAIL || !ADMIN_PASSWORD) {
 }
 if (ADMIN_PASSWORD.length < 14) throw new Error("ADMIN_PASSWORD must contain at least 14 characters.");
 
-const pool = new Pool({ connectionString: DATABASE_URL, max: 1 });
+const connectionStringDefinesSsl = /[?&](sslmode|sslcert|sslkey|sslrootcert)=/i.test(DATABASE_URL);
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+  max: 1,
+  ...(process.env.DATABASE_SSL === "true" && !connectionStringDefinesSsl ? { ssl: { rejectUnauthorized: true } } : {}),
+});
 try {
   const existing = await pool.query("SELECT COUNT(*)::int AS count FROM users");
   if (existing.rows[0].count > 0) {

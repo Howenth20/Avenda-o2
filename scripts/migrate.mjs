@@ -3,7 +3,13 @@ import pg from "pg";
 
 const { Pool } = pg;
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required.");
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
+const databaseUrl = process.env.DATABASE_URL;
+const connectionStringDefinesSsl = /[?&](sslmode|sslcert|sslkey|sslrootcert)=/i.test(databaseUrl);
+const pool = new Pool({
+  connectionString: databaseUrl,
+  max: 1,
+  ...(process.env.DATABASE_SSL === "true" && !connectionStringDefinesSsl ? { ssl: { rejectUnauthorized: true } } : {}),
+});
 
 try {
   const migrations = [
