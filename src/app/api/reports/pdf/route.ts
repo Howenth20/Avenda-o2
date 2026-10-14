@@ -1,9 +1,9 @@
 import PDFDocument from "pdfkit";
 import { getSessionUser } from "@/lib/auth";
 import { errorResponse } from "@/lib/http";
-import { weeklyReport } from "@/lib/reporting";
+import { reportForRange, reportingRange, type ReportPeriod } from "@/lib/reporting";
 import { ApiError } from "@/lib/types";
-import { businessToday, mondayOfWeek } from "@/lib/validation";
+import { businessToday, mondayOfWeek, uuidSchema } from "@/lib/validation";
 
 export const runtime = "nodejs";
 
@@ -37,21 +37,29 @@ export async function GET(request: Request) {
     const user = await getSessionUser();
     if (!user) throw new ApiError(401, "Inicia sesión para generar reportes.");
     const params = new URL(request.url).searchParams;
-    const weekStart = params.get("weekStart") ?? mondayOfWeek(businessToday());
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart) || mondayOfWeek(weekStart) !== weekStart) throw new ApiError(422, "Selecciona el lunes de la semana.");
-    const report = await weeklyReport(user, weekStart);
+    const period = (params.get("period") ?? "week") as ReportPeriod;
+    if (!["week", "month", "year"].includes(period)) throw new ApiError(422, "El periodo del reporte no es válido.");
+    const today = businessToday();
+    const value = params.get("value") ?? params.get("weekStart") ?? (period === "week" ? mondayOfWeek(today) : period === "month" ? today.slice(0, 7) : today.slice(0, 4));
+    const projectId = params.get("projectId");
+    if (projectId) uuidSchema.parse(projectId);
+    if (user.role !== "ADMIN" && projectId && projectId !== user.projectId) throw new ApiError(403, "No tienes acceso a esa obra.");
+    const { start, end } = reportingRange(period, value);
+    const report = await reportForRange(user, start, end, projectId);
     const chunks: Buffer[] = [];
-    const doc = new PDFDocument({ size: "A4", margin: 44, info: { Title: `Reporte semanal Rinde+ ${report.weekStart}`, Author: "AVENDAÑO RINDE+" } });
+    const periodLabel = period === "week" ? "semanal" : period === "month" ? "mensual" : "anual";
+    const scopeLabel = projectId ? report.movements[0]?.projectName ?? "Obra seleccionada" : "Todas las obras";
+    const doc = new PDFDocument({ size: "A4", margin: 44, info: { Title: `Reporte ${periodLabel} Rinde+ ${value}`, Author: "AVENDAÑO RINDE+" } });
     const finished = new Promise<Buffer>((resolve, reject) => {
       doc.on("data", (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
       doc.on("end", () => resolve(Buffer.concat(chunks)));
       doc.on("error", reject);
     });
     doc.fillColor("#24252A").fontSize(19).font("Helvetica-Bold").text("AVENDAÑO RINDE+", { continued: true });
-    doc.fillColor("#EC823D").text("  ·  Registro semanal");
+    doc.fillColor("#EC823D").text(`  ·  Reporte ${periodLabel}`);
     doc.moveDown(0.35).fillColor("#6D7078").font("Helvetica").fontSize(10)
-      .text(`Semana: ${displayDate(report.weekStart)} al ${displayDate(report.weekEnd)}   |   Generado: ${new Date().toLocaleString("es-PE", { timeZone: process.env.BUSINESS_TIME_ZONE || "America/Lima" })}`);
-    doc.moveDown(0.8).fillColor("#24252A").font("Helvetica-Bold").fontSize(12).text(`Operación semanal: ${money(report.totals.operationalCents)}`);
+      .text(`Periodo: ${displayDate(report.weekStart)} al ${displayDate(report.weekEnd)}   |   Alcance: ${scopeLabel}   |   Generado: ${new Date().toLocaleString("es-PE", { timeZone: process.env.BUSINESS_TIME_ZONE || "America/Lima" })}`);
+    doc.moveDown(0.8).fillColor("#24252A").font("Helvetica-Bold").fontSize(12).text(`Operación del periodo: ${money(report.totals.operationalCents)}`);
     doc.font("Helvetica").fontSize(9.5).fillColor("#6D7078")
       .text(`Gastos: ${money(report.totals.expenseCents)}   ·   Viáticos: ${money(report.totals.perDiemCents)}   ·   Facturas hechas: ${money(report.totals.invoiceDoneCents)}`)
       .text(`Caja chica disponible: ${money(report.totals.pettyCashBalanceCents)}   ·   Movimientos: ${report.movements.length}`);
@@ -93,7 +101,7 @@ export async function GET(request: Request) {
     return new Response(new Uint8Array(pdf), {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="rinde-reporte-semanal-${report.weekStart}.pdf"`,
+        "Content-Disposition": `attachment; filename="rinde-reporte-${periodLabel}-${value}.pdf"`,
         "Cache-Control": "private, no-store",
       },
     });

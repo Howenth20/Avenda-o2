@@ -14,8 +14,8 @@ const updateSchema = z.object({
   lastName: z.string().trim().min(2).max(120).optional(),
   jobTitle: z.string().trim().min(2).max(120).optional(),
   phone: z.string().trim().regex(/^\+?[0-9()\s.-]{7,24}$/).transform((value) => value.replace(/[()\s.-]/g, "")).optional(),
-  email: emailSchema.optional(),
-  address: z.string().trim().min(4).max(240).optional(),
+  email: emailSchema.nullable().optional().or(z.literal("").transform(() => null)),
+  address: z.string().trim().max(240).nullable().optional().or(z.literal("")),
   hiredOn: isoDateSchema.optional(),
   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
   reason: z.string().trim().min(3).max(300).optional(),
@@ -50,8 +50,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
            phone=$7, email=$8, address=$9, hired_on=$10, status=$11, updated_at=NOW()
            WHERE id=$1 AND deleted_at IS NULL RETURNING *`,
           [id, projectId, input.dni ?? before.dni, input.firstName ?? before.first_name, input.lastName ?? before.last_name,
-            input.jobTitle ?? before.job_title, input.phone ?? before.phone, input.email ?? before.email,
-            input.address ?? before.address, input.hiredOn ?? before.hired_on, input.status ?? before.status],
+            input.jobTitle ?? before.job_title, input.phone ?? before.phone, input.email === undefined ? before.email : input.email,
+            input.address === undefined ? before.address : input.address || null, input.hiredOn ?? before.hired_on, input.status ?? before.status],
         );
         if (!result.rows[0]) throw new ApiError(409, "Restaura al trabajador antes de editarlo.");
       }

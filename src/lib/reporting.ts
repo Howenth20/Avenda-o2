@@ -1,7 +1,25 @@
 import "server-only";
 import { pool } from "@/lib/db";
-import type { SessionUser } from "@/lib/types";
+import { ApiError, type SessionUser } from "@/lib/types";
 import { addDays, mondayOfWeek } from "@/lib/validation";
+
+export type ReportPeriod = "week" | "month" | "year";
+
+export function reportingRange(period: ReportPeriod, value: string): { start: string; end: string } {
+  if (period === "week") {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || mondayOfWeek(value) !== value) throw new ApiError(422, "Para el reporte semanal selecciona el lunes de la semana.");
+    return { start: value, end: addDays(value, 6) };
+  }
+  if (period === "month") {
+    if (!/^\d{4}-\d{2}$/.test(value)) throw new ApiError(422, "Selecciona un mes válido.");
+    const [year, month] = value.split("-").map(Number);
+    if (year < 1900 || year > 2100 || month < 1 || month > 12) throw new ApiError(422, "Selecciona un mes válido.");
+    return { start: `${value}-01`, end: new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10) };
+  }
+  if (!/^\d{4}$/.test(value)) throw new ApiError(422, "Selecciona un año válido.");
+  if (Number(value) < 1900 || Number(value) > 2100) throw new ApiError(422, "El año debe estar entre 1900 y 2100.");
+  return { start: `${value}-01-01`, end: `${value}-12-31` };
+}
 
 export interface WeeklyMovement {
   id: string;
@@ -46,46 +64,47 @@ function number(value: unknown): number {
   return Number(value ?? 0);
 }
 
-function projectScope(user: SessionUser, column: string, values: unknown[]): string {
-  if (user.role === "ADMIN") return "";
-  values.push(user.projectId);
+function projectScope(user: SessionUser, column: string, values: unknown[], requestedProjectId?: string | null): string {
+  const projectId = user.role === "ADMIN" ? requestedProjectId : user.projectId;
+  if (!projectId) return "";
+  values.push(projectId);
   return ` AND ${column}=$${values.length}`;
 }
 
-export async function weeklyReport(user: SessionUser, inputWeekStart: string): Promise<WeeklyReport> {
-  const weekStart = mondayOfWeek(inputWeekStart);
-  const weekEnd = addDays(weekStart, 6);
-  const expenseValues: unknown[] = [weekStart];
-  const expenseScope = projectScope(user, "e.project_id", expenseValues);
-  const perDiemValues: unknown[] = [weekStart];
-  const perDiemScope = projectScope(user, "d.project_id", perDiemValues);
-  const pettyValues: unknown[] = [weekStart];
-  const pettyScope = projectScope(user, "c.project_id", pettyValues);
+export async function reportForRange(user: SessionUser, inputStart: string, inputEnd: string, requestedProjectId?: string | null): Promise<WeeklyReport> {
+  const weekStart = inputStart;
+  const weekEnd = inputEnd;
+  const expenseValues: unknown[] = [weekStart, weekEnd];
+  const expenseScope = projectScope(user, "e.project_id", expenseValues, requestedProjectId);
+  const perDiemValues: unknown[] = [weekStart, weekEnd];
+  const perDiemScope = projectScope(user, "d.project_id", perDiemValues, requestedProjectId);
+  const pettyValues: unknown[] = [weekStart, weekEnd];
+  const pettyScope = projectScope(user, "c.project_id", pettyValues, requestedProjectId);
   const cashMovementBalanceValues: unknown[] = [weekEnd];
-  const cashScope = projectScope(user, "project_id", cashMovementBalanceValues);
+  const cashScope = projectScope(user, "project_id", cashMovementBalanceValues, requestedProjectId);
   const cashExpenseBalanceValues: unknown[] = [weekEnd];
-  const cashExpenseScope = projectScope(user, "project_id", cashExpenseBalanceValues);
+  const cashExpenseScope = projectScope(user, "project_id", cashExpenseBalanceValues, requestedProjectId);
 
   const [expensesResult, perDiemsResult, pettyResult, cashMovementBalance, cashExpenseBalance] = await Promise.all([
     pool.query(
       `SELECT e.id,e.project_id,e.expense_date::text AS movement_date,e.category,e.description,e.amount_cents,e.stage,
               e.invoice_status,e.payment_source,e.receipt_number,p.code AS project_code,p.name AS project_name
        FROM expenses e JOIN projects p ON p.id=e.project_id
-       WHERE e.deleted_at IS NULL AND e.week_start=$1::date ${expenseScope}
+       WHERE e.deleted_at IS NULL AND e.expense_date BETWEEN $1::date AND $2::date ${expenseScope}
        ORDER BY e.expense_date DESC,e.created_at DESC`, expenseValues,
     ),
     pool.query(
       `SELECT d.id,d.project_id,d.week_start::text AS movement_date,d.days_attended,d.total_cents AS amount_cents,d.stage,
               w.first_name || ' ' || w.last_name AS worker_name,p.code AS project_code,p.name AS project_name
        FROM per_diems d JOIN projects p ON p.id=d.project_id JOIN workers w ON w.id=d.worker_id
-       WHERE d.week_start=$1::date ${perDiemScope}
-       ORDER BY w.last_name,w.first_name`, perDiemValues,
+       WHERE d.week_start BETWEEN $1::date AND $2::date ${perDiemScope}
+       ORDER BY d.week_start DESC,w.last_name,w.first_name`, perDiemValues,
     ),
     pool.query(
       `SELECT c.id,c.project_id,c.movement_date::text AS movement_date,c.movement_type,c.description,c.receipt_number,
               c.amount_cents,p.code AS project_code,p.name AS project_name
        FROM petty_cash_movements c JOIN projects p ON p.id=c.project_id
-       WHERE c.deleted_at IS NULL AND c.week_start=$1::date ${pettyScope}
+       WHERE c.deleted_at IS NULL AND c.movement_date BETWEEN $1::date AND $2::date ${pettyScope}
        ORDER BY c.movement_date DESC,c.created_at DESC`, pettyValues,
     ),
     pool.query(
@@ -141,4 +160,9 @@ export async function weeklyReport(user: SessionUser, inputWeekStart: string): P
       pettyCashBalanceCents: number(cashMovementBalance.rows[0]?.balance) - number(cashExpenseBalance.rows[0]?.balance),
     },
   };
+}
+
+export async function weeklyReport(user: SessionUser, inputWeekStart: string): Promise<WeeklyReport> {
+  const weekStart = mondayOfWeek(inputWeekStart);
+  return reportForRange(user, weekStart, addDays(weekStart, 6));
 }

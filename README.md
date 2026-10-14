@@ -13,7 +13,7 @@ Aplicación nueva para gestionar gastos, asistencia y viáticos por obra. Está 
 - Tres etapas de pago: pendiente, aprobado y pagado. Cada gasto, movimiento de caja chica y viático puede tener un comprobante PDF o una imagen JPG, PNG, WEBP, GIF o BMP. El archivo se valida por su contenido y se vincula al importe del registro; los datos del documento son opcionales y, si se indica un importe, debe coincidir. “Factura hecha” se marca cuando el gasto tiene un comprobante adjunto y datos de proveedor o número de documento.
 - Caja chica con fondo, reposición, devolución y descuentos automáticos por gastos registrados desde caja chica. El saldo acumulado se calcula en el backend.
 - Bajas lógicas con motivo, botones de eliminación donde el registro puede eliminarse y restauración administrativa.
-- Gastos, tablero general, desglose por obra, reporte semanal PDF con fechas normalizadas, tickets de soporte y auditoría con valores antes/después, usuario, fecha e IP.
+- Gastos, tablero general, desglose por obra, reportes semanales, mensuales y anuales por obra o consolidados en PDF, tickets de soporte y auditoría con valores antes/después, usuario, fecha e IP.
 - Libro de Reclamaciones, Política de privacidad y Términos y condiciones públicos. Cada reclamación conserva su código, fecha y versión de política aceptada.
 - Sesiones persistidas en PostgreSQL, contraseñas con hash, cookies HttpOnly, validación de entrada y límite básico de intentos de acceso/tickets.
 

@@ -14,8 +14,8 @@ const workerSchema = z.object({
   lastName: z.string().trim().min(2).max(120),
   jobTitle: z.string().trim().min(2).max(120),
   phone: phoneSchema,
-  email: emailSchema,
-  address: z.string().trim().min(4).max(240),
+  email: emailSchema.nullable().optional().or(z.literal("").transform(() => null)),
+  address: z.string().trim().max(240).optional().or(z.literal("")),
   hiredOn: isoDateSchema,
 });
 
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
         `INSERT INTO workers (project_id, dni, first_name, last_name, job_title, phone, email, address, hired_on)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
          RETURNING id, project_id, dni, first_name, last_name, job_title, phone, email, address, hired_on, status`,
-        [input.projectId, input.dni, input.firstName, input.lastName, input.jobTitle, input.phone, input.email, input.address, input.hiredOn],
+        [input.projectId, input.dni, input.firstName, input.lastName, input.jobTitle, input.phone, input.email ?? null, input.address || null, input.hiredOn],
       );
       await recordAudit(client, { actorId: user.id, projectId: input.projectId, action: "CREATE", entityType: "worker", entityId: result.rows[0].id, before: null, after: result.rows[0], ip: requestIp(request) });
       return result.rows[0];
